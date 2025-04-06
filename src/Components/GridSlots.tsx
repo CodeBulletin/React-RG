@@ -1,7 +1,7 @@
 import React from "react";
 import { useGridContext } from "./Grid";
 
-const GridLines = () => {
+const GridSlots = () => {
   const gridContext = useGridContext();
   const { cols, rowHeight, gap, rows } = gridContext;
   const [cells, setCells] = React.useState<number[]>([]);
@@ -51,4 +51,4 @@ const GridLines = () => {
   );
 };
 
-export default GridLines;
+export default GridSlots;

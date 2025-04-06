@@ -1,0 +1,11 @@
+.widget {
+  z-index: 1;
+}
+.widget.widget-moving,
+.widget.widget-resizing {
+  z-index: 3;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}

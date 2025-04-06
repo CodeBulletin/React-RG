@@ -6,11 +6,6 @@ import React, {
 } from "react";
 import { useGridContext } from "./Grid";
 
-export type WidgetContext = {
-  resizeRef: React.RefObject<HTMLDivElement | null>;
-  moveRef: React.RefObject<HTMLDivElement | null>;
-};
-
 export type WidgetProps = {
   children: React.ReactNode;
   id: number;
@@ -26,6 +21,9 @@ export type WidgetProps = {
   minH?: number;
   maxW?: number;
   maxH?: number;
+
+  className?: string;
+  style?: React.CSSProperties;
 };
 
 export type WidgetRef = {
@@ -49,16 +47,6 @@ export type sizeState = {
   size: vec2;
   newSize: vec2 | null;
   isResizing: boolean;
-};
-
-const WidgetContext = React.createContext<WidgetContext | null>(null);
-
-export const useWidgetContext = () => {
-  const context = React.useContext(WidgetContext);
-  if (!context) {
-    throw new Error("useWidgetContext must be used within a WidgetProvider");
-  }
-  return context;
 };
 
 export const Widget = forwardRef(
@@ -94,8 +82,30 @@ export const Widget = forwardRef(
     );
 
     const divref = React.useRef<HTMLDivElement>(null);
-    const moveRef = React.useRef<HTMLDivElement>(null);
-    const resizeRef = React.useRef<HTMLDivElement>(null);
+
+    // if props change then update the state
+    useLayoutEffect(() => {
+      setPos((prev) => ({
+        ...prev,
+        pos: {
+          x: props.x,
+          y: props.y,
+        },
+      }));
+      setSize((prev) => ({
+        ...prev,
+        size: {
+          x: Math.min(
+            Math.max(props.w, props.minW ?? 1),
+            props.maxW ?? Infinity
+          ),
+          y: Math.min(
+            Math.max(props.h, props.minH ?? 1),
+            props.maxH ?? Infinity
+          ),
+        },
+      }));
+    }, [props.x, props.y, props.w, props.h]);
 
     // Imparative Handel
     useImperativeHandle(
@@ -118,18 +128,18 @@ export const Widget = forwardRef(
       if (!divref.current) return;
       if (movHandelDrag) return;
       setMovHandelDrag({
-        x: e.clientX - gridContext.top,
-        y: e.clientY - gridContext.left,
+        x: e.clientX,
+        y: e.clientY,
       });
     };
 
-    const handleMovingDown = (e: MouseEvent) => {
+    const handleMovingDown = (e: any) => {
       if (props.isMovable === false) return;
       if (!divref.current) return;
       setMovHandelDrag(null);
       setMovHandelDown((_) => ({
-        x: e.clientX - gridContext.top,
-        y: e.clientY - gridContext.left,
+        x: e.clientX,
+        y: e.clientY,
       }));
     };
 
@@ -148,58 +158,52 @@ export const Widget = forwardRef(
         isMoving: true,
       }));
 
+      let rect = divref.current?.getBoundingClientRect();
+
       setOffset((_) => ({
-        x: movHandelDown.x - (pos.pos.x * gridContext.width) / gridContext.cols, // does ot require the addition of gap becz included in width
-        y:
-          movHandelDown.y -
-          pos.pos.y * (gridContext.rowHeight + gridContext.gap),
+        x: movHandelDown.x - (rect?.left ?? 0),
+        y: movHandelDown.y - (rect?.top ?? 0),
       }));
 
-      setActualPos({
-        x: movHandelDown.x,
-        y: movHandelDown.y,
+      setActualSize({
+        x: rect?.width ?? 0,
+        y: rect?.height ?? 0,
       });
 
-      setActualSize({
-        x: divref.current?.getBoundingClientRect().width ?? 0,
-        y: divref.current?.getBoundingClientRect().height ?? 0,
-      });
       gridContext.setChanging((_) => props.id);
+
       gridContext.setRect({
         pos: pos.pos,
         size: size.size,
       });
+
       setMovHandelDown((_) => null);
     }, [movHandelDown]);
 
     useLayoutEffect(() => {
       if (!movHandelDrag) return;
       let rect = divref.current?.getBoundingClientRect();
-      let x: number = movHandelDrag.x - offset.x;
-      let y: number = movHandelDrag.y - offset.y;
+      let x: number = movHandelDrag.x - gridContext.left - offset.x;
+      let y: number = movHandelDrag.y - gridContext.top - offset.y;
 
       setActualPos((_) => ({
         x: Math.max(Math.min(x, gridContext.width - (rect?.width ?? 0)), 0),
         y: Math.max(y, 0),
       }));
 
-      let topCenter: vec2 = {
-        x: (rect?.left ?? 0) - gridContext.left + (rect?.width ?? 0) / 2,
-        y: (rect?.top ?? 0) - gridContext.top,
-      };
-
       let newX = Math.max(
         Math.min(
-          Math.ceil(
-            Math.floor(topCenter.x / (gridContext.width / gridContext.cols)) -
-              size.size.x / 2
+          Math.floor(
+            (x + gridContext.gap / 2) / (gridContext.colWidth + gridContext.gap)
           ),
           gridContext.cols - size.size.x
         ),
         0
       );
       let newY = Math.max(
-        Math.floor(topCenter.y / (gridContext.rowHeight + gridContext.gap)),
+        Math.floor(
+          (y + gridContext.gap / 2) / (gridContext.rowHeight + gridContext.gap)
+        ),
         0
       );
 
@@ -264,17 +268,6 @@ export const Widget = forwardRef(
       }
     }, [pos.isMoving, pos.pos, actualPos]);
 
-    useEffect(() => {
-      if (moveRef.current) {
-        moveRef.current.addEventListener("mousedown", handleMovingDown);
-      }
-      return () => {
-        if (moveRef.current) {
-          moveRef.current.removeEventListener("mousedown", handleMovingDown);
-        }
-      };
-    }, [moveRef.current]);
-
     // Resize Logic
     const handelResizing = (e: MouseEvent) => {
       if (props.isResizable === false) return;
@@ -287,7 +280,7 @@ export const Widget = forwardRef(
       }));
     };
 
-    const handleResizingDown = (e: MouseEvent) => {
+    const handleResizingDown = (e: any) => {
       if (props.isResizable === false) return;
       if (!divref.current) return;
 
@@ -316,17 +309,22 @@ export const Widget = forwardRef(
         isResizing: true,
       }));
 
+      let rect = divref.current?.getBoundingClientRect();
+      let left = rect?.left ?? 0;
+      let top = rect?.top ?? 0;
+
+      setOffset((_) => ({
+        x: (rect?.left ?? 0) + (rect?.width ?? 0) - resizeHandelDown.x,
+        y: (rect?.top ?? 0) + (rect?.height ?? 0) - resizeHandelDown.y,
+      }));
+
       setActualSize((_) => ({
-        x:
-          resizeHandelDown.x -
-          (divref.current?.getBoundingClientRect().left ?? 0),
-        y:
-          resizeHandelDown.y -
-          (divref.current?.getBoundingClientRect().top ?? 0),
+        x: rect?.width ?? 0,
+        y: rect?.height ?? 0,
       }));
 
       setActualPos((_) => ({
-        x: (pos.pos.x * gridContext.width) / gridContext.cols,
+        x: pos.pos.x * (gridContext.colWidth + gridContext.gap),
         y: pos.pos.y * (gridContext.rowHeight + gridContext.gap),
       }));
 
@@ -337,58 +335,72 @@ export const Widget = forwardRef(
     useLayoutEffect(() => {
       if (!resizeHandelDrag) return;
 
-      let x: number = resizeHandelDrag.x;
-      let y: number = resizeHandelDrag.y;
+      let x: number = resizeHandelDrag.x + offset.x;
+      let y: number = resizeHandelDrag.y + offset.y;
 
       let rect = divref.current?.getBoundingClientRect();
 
-      let left = rect?.left ?? 0 - gridContext.left;
-      let top = rect?.top ?? 0 - gridContext.top;
+      let left = rect?.left ?? 0;
+      let top = rect?.top ?? 0;
 
       let ax = Math.max(
         Math.min(x - left, gridContext.width),
-        (props.minW ?? 1) * (gridContext.width / gridContext.cols) -
-          gridContext.gap
+        (props.minW ?? 1) * gridContext.colWidth +
+          ((props.minW ?? 1) - 1) * gridContext.gap
       );
       let ay = Math.max(
         y - top,
-        (props.minH ?? 1) * (gridContext.rowHeight + gridContext.gap) -
-          gridContext.gap
+        (props.minH ?? 1) * gridContext.rowHeight +
+          ((props.minH ?? 1) - 1) * gridContext.gap
       );
 
       if (
         props.maxW &&
         ax >
-          props.maxW * (gridContext.width / gridContext.cols) - gridContext.gap
-      )
+          props.maxW * gridContext.colWidth + (props.maxW - 1) * gridContext.gap
+      ) {
         ax =
-          props.maxW * (gridContext.width / gridContext.cols) - gridContext.gap;
+          props.maxW * gridContext.colWidth +
+          (props.maxW - 1) * gridContext.gap;
+      }
+
+      if (ax + left > gridContext.width) {
+        ax = gridContext.width - left + gridContext.left;
+      }
 
       if (
         props.maxH &&
         ay >
-          props.maxH * (gridContext.rowHeight + gridContext.gap) -
-            gridContext.gap
-      )
+          props.maxH * gridContext.rowHeight +
+            (props.maxH - 1) * gridContext.gap
+      ) {
         ay =
-          props.maxH * (gridContext.rowHeight + gridContext.gap) -
-          gridContext.gap;
+          props.maxH * gridContext.rowHeight +
+          (props.maxH - 1) * gridContext.gap;
+      }
 
       setActualSize((_) => ({
         x: ax,
         y: ay,
       }));
 
+      //  To Fix
       let newW = Math.max(
         Math.min(
-          Math.ceil((x - left) / (gridContext.width / gridContext.cols)),
+          Math.ceil(
+            (x - left + gridContext.gap / 2) /
+              (gridContext.colWidth + gridContext.gap)
+          ),
           gridContext.cols - pos.pos.x
         ),
         props.minW ?? 1
       );
 
       let newH = Math.max(
-        Math.ceil((y - top) / (gridContext.rowHeight + gridContext.gap)),
+        Math.ceil(
+          (y - top + gridContext.gap / 2) /
+            (gridContext.rowHeight + gridContext.gap)
+        ),
         props.minH ?? 1
       );
 
@@ -440,11 +452,11 @@ export const Widget = forwardRef(
     useLayoutEffect(() => {
       if (divref.current) {
         if (size.isResizing) {
-          divref.current.style.position = "relative";
+          divref.current.style.position = "absolute";
           divref.current.style.width = `${actualSize.x}px`;
           divref.current.style.height = `${actualSize.y}px`;
-          divref.current.style.gridRowStart = `${pos.pos.y + 1}`;
-          divref.current.style.gridColumnStart = `${pos.pos.x + 1}`;
+          divref.current.style.top = `${actualPos.y}px`;
+          divref.current.style.left = `${actualPos.x}px`;
         } else {
           divref.current.style.position = "relative";
           divref.current.style.width = `100%`;
@@ -459,36 +471,54 @@ export const Widget = forwardRef(
     }, [size.isResizing, size.size, actualSize]);
 
     useEffect(() => {
-      if (resizeRef.current) {
-        resizeRef.current.addEventListener("mousedown", handleResizingDown);
+      const child = divref.current?.querySelector(".widget-draggable-handle");
+      if (child) {
+        child.addEventListener("mousedown", handleMovingDown);
       }
+
+      const resizeChild = divref.current?.querySelector(
+        ".widget-resizable-handle"
+      );
+
+      if (resizeChild) {
+        resizeChild.addEventListener("mousedown", handleResizingDown);
+      }
+
       return () => {
-        if (resizeRef.current) {
-          resizeRef.current.removeEventListener(
+        if (child) {
+          (child as HTMLElement).removeEventListener(
+            "mousedown",
+            handleMovingDown
+          );
+        }
+        if (resizeChild) {
+          (resizeChild as HTMLElement).removeEventListener(
             "mousedown",
             handleResizingDown
           );
         }
       };
-    }, [resizeRef.current]);
+    }, [children]);
 
     return (
-      <WidgetContext.Provider
-        value={{
-          resizeRef: resizeRef,
-          moveRef: moveRef,
+      <div
+        ref={divref}
+        style={{
+          ...props.style,
+          position: "absolute",
         }}
+        className={`
+          ${props.className ?? ""}
+          widget 
+          ${props.static ? "widget-static" : ""}
+          ${props.isResizable ? "widget-resizable" : ""}
+          ${props.isMovable ? "widget-movable" : ""}
+          ${pos.isMoving ? "widget-moving" : ""}
+          ${size.isResizing ? "widget-resizing" : ""}
+        `}
       >
-        <div
-          ref={divref}
-          style={{
-            position: "absolute",
-            zIndex: pos.isMoving ? 2 : 1,
-          }}
-        >
-          {children}
-        </div>
-      </WidgetContext.Provider>
+        {children}
+      </div>
     );
   }
 );

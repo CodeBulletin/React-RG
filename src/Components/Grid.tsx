@@ -8,6 +8,7 @@ import React, {
 import GridSlots from "./GridSlots";
 import { vec2, WidgetProps, WidgetRef } from "./Widget";
 import Placeholder from "./Placeholder";
+import "./Grid.css";
 
 export type GridProps = {
   children: React.ReactElement[];
@@ -15,6 +16,7 @@ export type GridProps = {
   rowHeight?: number;
   gap?: number;
   showSlots?: boolean;
+  showPlaceholder?: boolean;
 };
 
 export type rect = {
@@ -24,6 +26,7 @@ export type rect = {
 
 export type GridContext = {
   cols: number;
+  colWidth: number;
   rows: number;
   rowHeight: number;
   gap: number;
@@ -114,7 +117,6 @@ export const Grid = forwardRef((props: GridProps, ref: React.Ref<GridRef>) => {
 
   React.useEffect(() => {
     widgetRefs.current.clear();
-    console.log("Why Here?");
     for (let i = 0; i < props.children.length; i++) {
       let child = props.children[i].props as WidgetProps;
       widgetRefs.current.set(child.id, React.createRef());
@@ -122,18 +124,52 @@ export const Grid = forwardRef((props: GridProps, ref: React.Ref<GridRef>) => {
   }, [props.children]);
 
   React.useLayoutEffect(() => {
-    if (gridref.current) {
-      const rect = gridref.current?.getBoundingClientRect();
-      setState({
-        width: rect.width,
-        rows: Math.floor(
+    let rafId: number | null = null;
+    const measure = () => {
+      if (gridref.current) {
+        const rect = gridref.current.getBoundingClientRect();
+        const newRows = Math.floor(
           rect.height / ((props.rowHeight || 100) + (props.gap || 10)) + 1
-        ),
-        top: rect.top,
-        left: rect.left,
-      });
+        );
+
+        setState((prevState) => {
+          if (
+            prevState.width !== rect.width ||
+            prevState.rows !== newRows ||
+            prevState.top !== rect.top ||
+            prevState.left !== rect.left
+          ) {
+            return {
+              width: rect.width,
+              rows: newRows,
+              top: rect.top,
+              left: rect.left,
+            };
+          }
+          return prevState;
+        });
+      }
+      rafId = null;
+    };
+
+    measure();
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (rafId === null) {
+        rafId = requestAnimationFrame(measure);
+      }
+    });
+    if (gridref.current) {
+      resizeObserver.observe(gridref.current);
     }
-  }, [gridref, changing]);
+
+    return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      resizeObserver.disconnect();
+    };
+  }, [gridref, props.rowHeight, props.gap, props.cols]);
 
   React.useEffect(() => {
     setChanged(-1);
@@ -149,6 +185,9 @@ export const Grid = forwardRef((props: GridProps, ref: React.Ref<GridRef>) => {
       <GridContext.Provider
         value={{
           cols: props.cols || 12,
+          colWidth:
+            (state.width - (props.gap || 10) * ((props.cols || 12) - 1)) /
+            (props.cols || 12),
           rows: state.rows,
           rowHeight: props.rowHeight || 100,
           gap: props.gap || 10,
@@ -188,9 +227,9 @@ export const Grid = forwardRef((props: GridProps, ref: React.Ref<GridRef>) => {
               });
             }
           })}
-          <Placeholder />
         </div>
         {props.showSlots && <GridSlots />}
+        {props.showPlaceholder && <Placeholder />}
       </GridContext.Provider>
     </div>
   );
