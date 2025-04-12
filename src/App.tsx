@@ -1,8 +1,9 @@
 import { useRef, useState } from "react";
 import "./App.css";
 import { Exmaple } from "./Components/Example";
-import Grid, { GridRef } from "./Components/Grid";
-import { Widget } from "./Components/Widget";
+import Grid from "./Components/Grid";
+import Widget from "./Components/Widget";
+import { GridRef } from "./Components/types";
 
 function App() {
   const [slots, setSlots] = useState(false);
@@ -58,8 +59,8 @@ function App() {
       y: 0,
       minW: 1,
       minH: 1,
-      maxH: 10,
-      maxW: 20,
+      maxH: null,
+      maxW: null,
       static: false,
       isResizable: true,
       isMovable: true,
@@ -144,12 +145,12 @@ function App() {
             y={l.y}
             w={l.w}
             h={l.h}
-            static={l.static}
+            static={true}
             isResizable={l.isResizable}
             isMovable={l.isMovable}
             minW={l.minW}
             minH={l.minH}
-            maxH={l.maxH}
+            maxH={l.maxH ?? undefined}
             maxW={l.maxW ?? undefined}
           >
             <Exmaple id={l.id} />

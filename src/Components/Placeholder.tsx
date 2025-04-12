@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React from "react";
 import { useGridContext } from "./Grid";
 
 const Placeholder = () => {
@@ -18,14 +18,14 @@ const Placeholder = () => {
   const w = rect.size.x * cellWidth + (rect.size.x - 1) * gap;
   const h = rect.size.y * rowHeight + (rect.size.y - 1) * gap;
 
-  const [style, setStyle] = useState({
+  const [style, setStyle] = React.useState({
     left,
     top,
     width: w,
     height: h,
   });
 
-  useEffect(() => {
+  React.useEffect(() => {
     setStyle({ left, top, width: w, height: h });
   }, [left, top, w, h]);
 
@@ -39,7 +39,9 @@ const Placeholder = () => {
         ...style,
         transition: "all 200ms ease",
         border: "1px dashed black",
-        zIndex: 5,
+        zIndex: 2,
+        backgroundColor: 'lavender',
+        opacity: 0.2
       }}
     />
   );

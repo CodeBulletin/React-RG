@@ -1,524 +1,325 @@
-import React, {
-  forwardRef,
-  useEffect,
-  useImperativeHandle,
-  useLayoutEffect,
-} from "react";
+import React, { forwardRef } from "react";
 import { useGridContext } from "./Grid";
-
-export type WidgetProps = {
-  children: React.ReactNode;
-  id: number;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-
-  static?: boolean;
-  isResizable?: boolean;
-  isMovable?: boolean;
-  minW?: number;
-  minH?: number;
-  maxW?: number;
-  maxH?: number;
-
-  className?: string;
-  style?: React.CSSProperties;
-};
-
-export type WidgetRef = {
-  getSize: () => vec2;
-  getPosition: () => vec2;
-  setPosition: (pos: vec2) => void;
-};
-
-export type vec2 = {
-  x: number;
-  y: number;
-};
-
-export type positionState = {
-  pos: vec2;
-  newPos: vec2 | null;
-  isMoving: boolean;
-};
-
-export type sizeState = {
-  size: vec2;
-  newSize: vec2 | null;
-  isResizing: boolean;
-};
+import { Vec2, WidgetProps, WidgetRef } from "./types";
+import { createInitialState, widgetReducer } from "./WidgetReducer";
 
 export const Widget = forwardRef(
   (props: WidgetProps, ref: React.Ref<WidgetRef>) => {
-    const { children } = props;
+    const {
+      children,
+      x,
+      y,
+      w,
+      h,
+      minW,
+      maxW,
+      minH,
+      maxH,
+      id,
+      isMovable = true,
+      isResizable = true,
+      static: isStatic,
+    } = props;
     const gridContext = useGridContext();
-
-    const [pos, setPos] = React.useState<positionState>({
-      pos: { x: props.x, y: props.y },
-      newPos: null,
-      isMoving: false,
-    });
-    const [actualPos, setActualPos] = React.useState<vec2>({ x: 0, y: 0 });
-
-    const [size, setSize] = React.useState<sizeState>({
-      size: {
-        x: Math.min(Math.max(props.w, props.minW ?? 1), props.maxW ?? Infinity),
-        y: Math.min(Math.max(props.h, props.minH ?? 1), props.maxH ?? Infinity),
-      },
-      newSize: null,
-      isResizing: false,
-    });
-    const [actualSize, setActualSize] = React.useState<vec2>({ x: 0, y: 0 });
-
-    const [offset, setOffset] = React.useState<vec2>({ x: 0, y: 0 });
-    const [movHandelDown, setMovHandelDown] = React.useState<vec2 | null>(null);
-    const [movHandelDrag, setMovHandelDrag] = React.useState<vec2 | null>(null);
-    const [resizeHandelDown, setResizeHandelDown] = React.useState<vec2 | null>(
-      null
-    );
-    const [resizeHandelDrag, setResizeHandelDrag] = React.useState<vec2 | null>(
-      null
-    );
-
     const divref = React.useRef<HTMLDivElement>(null);
+    const latestMouseEventRef = React.useRef<{
+      clientX: number;
+      clientY: number;
+    } | null>(null);
+    const animationFrameRef = React.useRef<number | null>(null);
 
-    // if props change then update the state
-    useLayoutEffect(() => {
-      setPos((prev) => ({
-        ...prev,
-        pos: {
-          x: props.x,
-          y: props.y,
-        },
-      }));
-      setSize((prev) => ({
-        ...prev,
-        size: {
-          x: Math.min(
-            Math.max(props.w, props.minW ?? 1),
-            props.maxW ?? Infinity
-          ),
-          y: Math.min(
-            Math.max(props.h, props.minH ?? 1),
-            props.maxH ?? Infinity
-          ),
-        },
-      }));
-    }, [props.x, props.y, props.w, props.h]);
+    const [state, dispatch] = React.useReducer(widgetReducer, props, createInitialState);
 
-    // Imparative Handel
-    useImperativeHandle(
+    // --- Event Handlers ---
+    const handleMoveMouseDown = React.useCallback(
+      (e: MouseEvent) => {
+        if (!isMovable || !divref.current) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const elementRect = divref.current.getBoundingClientRect();
+        dispatch({
+          type: "MOVE_START",
+          payload: {
+            clientX: e.clientX,
+            clientY: e.clientY,
+            elementRect,
+            gridContext,
+          },
+        });
+      },
+      [isMovable, gridContext, dispatch]
+    );
+
+    const handleResizeMouseDown = React.useCallback(
+      (e: MouseEvent) => {
+        if (!isResizable || !divref.current) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const elementRect = divref.current.getBoundingClientRect();
+        dispatch({
+          type: "RESIZE_START",
+          payload: {
+            clientX: e.clientX,
+            clientY: e.clientY,
+            elementRect,
+            gridContext,
+          },
+        });
+      },
+      [isResizable, gridContext, dispatch]
+    );
+
+    // --- Imperative Handle ---
+    React.useImperativeHandle(
       ref,
       () => ({
-        getPosition: () => pos.pos,
-        getSize: () => size.size,
-        setPosition: (pos: vec2) =>
-          setPos((prev) => ({
-            ...prev,
-            pos: pos,
-          })),
+        getPosition: () => state.gridPos,
+        getSize: () => state.gridSize,
+        setPosition: (newPos: Vec2) =>
+          dispatch({ type: "SET_POSITION", payload: newPos }),
+        getStatic: () => isStatic ?? false
       }),
-      [size, pos]
+      [state.gridPos, state.gridSize, dispatch, isStatic]
     );
 
-    // Move Logic
-    const handelMoving = (e: MouseEvent) => {
-      if (props.isMovable === false) return;
-      if (!divref.current) return;
-      if (movHandelDrag) return;
-      setMovHandelDrag({
-        x: e.clientX,
-        y: e.clientY,
+    // --- Effect for Prop Updates ---
+    React.useEffect(() => {
+      dispatch({
+        type: "PROPS_UPDATE",
+        payload: { x, y, w, h, minW, maxW, minH, maxH },
       });
-    };
+    }, [x, y, w, h, minW, maxW, minH, maxH, dispatch]);
 
-    const handleMovingDown = (e: any) => {
-      if (props.isMovable === false) return;
-      if (!divref.current) return;
-      setMovHandelDrag(null);
-      setMovHandelDown((_) => ({
-        x: e.clientX,
-        y: e.clientY,
-      }));
-    };
+    // --- Global Listeners Effect ---
+    React.useEffect(() => {
+      if (state.status === "idle") return;
 
-    const handleMovingUp = () => {
-      setPos((prev) => ({
-        ...prev,
-        isMoving: false,
-      }));
-      gridContext.setChanging((_) => -1);
-    };
+      // Function to be called within rAF
+      const performUpdate = () => {
+        if (!latestMouseEventRef.current) return; // Should not happen if scheduled
 
-    useLayoutEffect(() => {
-      if (!movHandelDown) return;
-      setPos((prev) => ({
-        ...prev,
-        isMoving: true,
-      }));
+        const { clientX, clientY } = latestMouseEventRef.current;
 
-      let rect = divref.current?.getBoundingClientRect();
-
-      setOffset((_) => ({
-        x: movHandelDown.x - (rect?.left ?? 0),
-        y: movHandelDown.y - (rect?.top ?? 0),
-      }));
-
-      setActualSize({
-        x: rect?.width ?? 0,
-        y: rect?.height ?? 0,
-      });
-
-      gridContext.setChanging((_) => props.id);
-
-      gridContext.setRect({
-        pos: pos.pos,
-        size: size.size,
-      });
-
-      setMovHandelDown((_) => null);
-    }, [movHandelDown]);
-
-    useLayoutEffect(() => {
-      if (!movHandelDrag) return;
-      let rect = divref.current?.getBoundingClientRect();
-      let x: number = movHandelDrag.x - gridContext.left - offset.x;
-      let y: number = movHandelDrag.y - gridContext.top - offset.y;
-
-      setActualPos((_) => ({
-        x: Math.max(Math.min(x, gridContext.width - (rect?.width ?? 0)), 0),
-        y: Math.max(y, 0),
-      }));
-
-      let newX = Math.max(
-        Math.min(
-          Math.floor(
-            (x + gridContext.gap / 2) / (gridContext.colWidth + gridContext.gap)
-          ),
-          gridContext.cols - size.size.x
-        ),
-        0
-      );
-      let newY = Math.max(
-        Math.floor(
-          (y + gridContext.gap / 2) / (gridContext.rowHeight + gridContext.gap)
-        ),
-        0
-      );
-
-      setPos((prev) => ({
-        ...prev,
-        newPos: { x: newX, y: newY },
-      }));
-      setMovHandelDrag(null);
-    }, [movHandelDrag]);
-
-    useEffect(() => {
-      if (pos.isMoving) {
-        window.addEventListener("mousemove", handelMoving);
-        window.addEventListener("mouseup", handleMovingUp);
-      } else {
-        window.removeEventListener("mousemove", handelMoving);
-        window.removeEventListener("mouseup", handleMovingUp);
-      }
-      return () => {
-        window.removeEventListener("mousemove", handelMoving);
-        window.removeEventListener("mouseup", handleMovingUp);
-      };
-    }, [pos.isMoving]);
-
-    useEffect(() => {
-      if (pos.newPos) {
-        if (pos.newPos.x !== pos.pos.x || pos.newPos.y !== pos.pos.y) {
-          setPos((prev) => ({
-            ...prev,
-            pos: {
-              x: pos.newPos?.x || 0,
-              y: pos.newPos?.y || 0,
-            },
-          }));
-          gridContext.setRect({
-            pos: pos.newPos,
-            size: size.size,
+        if (state.status === "moving") {
+          dispatch({
+            type: "MOVE",
+            payload: { clientX, clientY, gridContext },
           });
-          gridContext.setChanged((_) => props.id);
-        }
-      }
-    }, [pos.newPos]);
-
-    useLayoutEffect(() => {
-      if (divref.current) {
-        if (pos.isMoving) {
-          divref.current.style.position = "absolute";
-          divref.current.style.top = `${actualPos.y}px`;
-          divref.current.style.left = `${actualPos.x}px`;
-          divref.current.style.width = `${actualSize.x}px`;
-          divref.current.style.height = `${actualSize.y}px`;
-        } else {
-          divref.current.style.position = "relative";
-          divref.current.style.top = `0px`;
-          divref.current.style.left = `0px`;
-          divref.current.style.width = `100%`;
-          divref.current.style.height = `100%`;
-          divref.current.style.gridArea = `${pos.pos.y + 1} / ${
-            pos.pos.x + 1
-          } / span ${size.size.y} / span ${size.size.x}`;
-        }
-      }
-    }, [pos.isMoving, pos.pos, actualPos]);
-
-    // Resize Logic
-    const handelResizing = (e: MouseEvent) => {
-      if (props.isResizable === false) return;
-      if (!divref.current) return;
-      if (resizeHandelDrag) return;
-
-      setResizeHandelDrag((_) => ({
-        x: e.clientX,
-        y: e.clientY,
-      }));
-    };
-
-    const handleResizingDown = (e: any) => {
-      if (props.isResizable === false) return;
-      if (!divref.current) return;
-
-      setResizeHandelDown((_) => ({
-        x: e.clientX,
-        y: e.clientY,
-      }));
-
-      setResizeHandelDrag((_) => null);
-    };
-
-    const handleResizingUp = () => {
-      setSize((prev) => ({
-        ...prev,
-        isResizing: false,
-      }));
-
-      gridContext.setChanging((_) => -1);
-    };
-
-    useLayoutEffect(() => {
-      if (!resizeHandelDown) return;
-
-      setSize((prev) => ({
-        ...prev,
-        isResizing: true,
-      }));
-
-      let rect = divref.current?.getBoundingClientRect();
-      let left = rect?.left ?? 0;
-      let top = rect?.top ?? 0;
-
-      setOffset((_) => ({
-        x: (rect?.left ?? 0) + (rect?.width ?? 0) - resizeHandelDown.x,
-        y: (rect?.top ?? 0) + (rect?.height ?? 0) - resizeHandelDown.y,
-      }));
-
-      setActualSize((_) => ({
-        x: rect?.width ?? 0,
-        y: rect?.height ?? 0,
-      }));
-
-      setActualPos((_) => ({
-        x: pos.pos.x * (gridContext.colWidth + gridContext.gap),
-        y: pos.pos.y * (gridContext.rowHeight + gridContext.gap),
-      }));
-
-      setResizeHandelDown((_) => null);
-      gridContext.setChanging((_) => props.id);
-    }, [resizeHandelDown]);
-
-    useLayoutEffect(() => {
-      if (!resizeHandelDrag) return;
-
-      let x: number = resizeHandelDrag.x + offset.x;
-      let y: number = resizeHandelDrag.y + offset.y;
-
-      let rect = divref.current?.getBoundingClientRect();
-
-      let left = rect?.left ?? 0;
-      let top = rect?.top ?? 0;
-
-      let ax = Math.max(
-        Math.min(x - left, gridContext.width),
-        (props.minW ?? 1) * gridContext.colWidth +
-          ((props.minW ?? 1) - 1) * gridContext.gap
-      );
-      let ay = Math.max(
-        y - top,
-        (props.minH ?? 1) * gridContext.rowHeight +
-          ((props.minH ?? 1) - 1) * gridContext.gap
-      );
-
-      if (
-        props.maxW &&
-        ax >
-          props.maxW * gridContext.colWidth + (props.maxW - 1) * gridContext.gap
-      ) {
-        ax =
-          props.maxW * gridContext.colWidth +
-          (props.maxW - 1) * gridContext.gap;
-      }
-
-      if (ax + left > gridContext.width) {
-        ax = gridContext.width - left + gridContext.left;
-      }
-
-      if (
-        props.maxH &&
-        ay >
-          props.maxH * gridContext.rowHeight +
-            (props.maxH - 1) * gridContext.gap
-      ) {
-        ay =
-          props.maxH * gridContext.rowHeight +
-          (props.maxH - 1) * gridContext.gap;
-      }
-
-      setActualSize((_) => ({
-        x: ax,
-        y: ay,
-      }));
-
-      //  To Fix
-      let newW = Math.max(
-        Math.min(
-          Math.ceil(
-            (x - left + gridContext.gap / 2) /
-              (gridContext.colWidth + gridContext.gap)
-          ),
-          gridContext.cols - pos.pos.x
-        ),
-        props.minW ?? 1
-      );
-
-      let newH = Math.max(
-        Math.ceil(
-          (y - top + gridContext.gap / 2) /
-            (gridContext.rowHeight + gridContext.gap)
-        ),
-        props.minH ?? 1
-      );
-
-      if (props.maxW && newW > props.maxW) newW = props.maxW;
-
-      if (props.maxH && newH > props.maxH) newH = props.maxH;
-
-      setSize((prev) => ({
-        ...prev,
-        newSize: { x: newW, y: newH },
-      }));
-
-      setResizeHandelDrag((_) => null);
-    }, [resizeHandelDrag]);
-
-    useEffect(() => {
-      if (size.isResizing) {
-        window.addEventListener("mousemove", handelResizing);
-        window.addEventListener("mouseup", handleResizingUp);
-      } else {
-        window.removeEventListener("mousemove", handelResizing);
-        window.removeEventListener("mouseup", handleResizingUp);
-      }
-      return () => {
-        window.removeEventListener("mousemove", handelResizing);
-        window.removeEventListener("mouseup", handleResizingUp);
-      };
-    }, [size.isResizing]);
-
-    useEffect(() => {
-      if (size.newSize) {
-        if (size.newSize.x !== size.size.x || size.newSize.y !== size.size.y) {
-          setSize((prev) => ({
-            ...prev,
-            size: {
-              x: size.newSize?.x || 0,
-              y: size.newSize?.y || 0,
+        } else if (state.status === "resizing") {
+          dispatch({
+            type: "RESIZE",
+            payload: {
+              clientX,
+              clientY,
+              gridContext,
+              minW,
+              maxW,
+              minH,
+              maxH,
             },
-          }));
-          gridContext.setRect({
-            pos: pos.pos,
-            size: size.newSize,
           });
-          gridContext.setChanged((_) => props.id);
         }
-      }
-    }, [size.newSize]);
 
-    useLayoutEffect(() => {
-      if (divref.current) {
-        if (size.isResizing) {
-          divref.current.style.position = "absolute";
-          divref.current.style.width = `${actualSize.x}px`;
-          divref.current.style.height = `${actualSize.y}px`;
-          divref.current.style.top = `${actualPos.y}px`;
-          divref.current.style.left = `${actualPos.x}px`;
-        } else {
-          divref.current.style.position = "relative";
-          divref.current.style.width = `100%`;
-          divref.current.style.height = `100%`;
-          divref.current.style.top = `0px`;
-          divref.current.style.left = `0px`;
-          divref.current.style.gridArea = `${pos.pos.y + 1} / ${
-            pos.pos.x + 1
-          } / span ${size.size.y} / span ${size.size.x}`;
+        // Reset the ref after processing the frame to allow scheduling the next one
+        animationFrameRef.current = null;
+      };
+
+      const handleMouseMove = (e: MouseEvent) => {
+        // Store the latest mouse event data
+        latestMouseEventRef.current = {
+          clientX: e.clientX,
+          clientY: e.clientY,
+        };
+
+        // If no frame is scheduled, schedule one
+        if (animationFrameRef.current === null) {
+          animationFrameRef.current = requestAnimationFrame(performUpdate);
         }
-      }
-    }, [size.isResizing, size.size, actualSize]);
+        // If a frame is already scheduled, it will simply use the latest data
+        // stored in latestMouseEventRef when it runs.
+      };
 
-    useEffect(() => {
-      const child = divref.current?.querySelector(".widget-draggable-handle");
-      if (child) {
-        child.addEventListener("mousedown", handleMovingDown);
-      }
+      const handleMouseUp = (_: MouseEvent) => {
+        // IMPORTANT: Cancel any pending animation frame
+        // to prevent updates after mouse up.
+        if (animationFrameRef.current !== null) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = null;
+        }
 
-      const resizeChild = divref.current?.querySelector(
+        // Dispatch the final END action
+        if (state.status === "moving") {
+          dispatch({ type: "MOVE_END" });
+        } else if (state.status === "resizing") {
+          dispatch({ type: "RESIZE_END" });
+        }
+        latestMouseEventRef.current = null; // Clear mouse data
+      };
+
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+
+      // Cleanup function
+      return () => {
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+
+        // Cancel any pending frame when the effect cleans up
+        // (e.g., component unmounts or status changes back to idle)
+        if (animationFrameRef.current !== null) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = null;
+        }
+        latestMouseEventRef.current = null; // Clear mouse data
+      };
+      // Ensure dependencies cover everything used in handlers & performUpdate
+    }, [state.status, gridContext, dispatch, id, minW, maxW, minH, maxH]); // Keep existing dependencies
+
+    // --- Attach Handle Listeners ---
+    React.useEffect(() => {
+      const draggable = divref.current?.querySelector(
+        ".widget-draggable-handle"
+      );
+      const resizable = divref.current?.querySelector(
         ".widget-resizable-handle"
       );
 
-      if (resizeChild) {
-        resizeChild.addEventListener("mousedown", handleResizingDown);
+      if (draggable && isMovable) {
+        draggable.addEventListener(
+          "mousedown",
+          handleMoveMouseDown as EventListener
+        );
+      }
+      if (resizable && isResizable) {
+        resizable.addEventListener(
+          "mousedown",
+          handleResizeMouseDown as EventListener
+        );
       }
 
       return () => {
-        if (child) {
-          (child as HTMLElement).removeEventListener(
+        if (draggable && isMovable) {
+          draggable.removeEventListener(
             "mousedown",
-            handleMovingDown
+            handleMoveMouseDown as EventListener
           );
         }
-        if (resizeChild) {
-          (resizeChild as HTMLElement).removeEventListener(
+        if (resizable && isResizable) {
+          resizable.removeEventListener(
             "mousedown",
-            handleResizingDown
+            handleResizeMouseDown as EventListener
           );
         }
       };
-    }, [children]);
+    }, [
+      children,
+      handleMoveMouseDown,
+      handleResizeMouseDown,
+      isMovable,
+      isResizable,
+    ]);
+
+    const classNames = [
+      props.className ?? "",
+      "widget",
+      isStatic ? "widget-static" : "",
+      isResizable ? "widget-resizable" : "",
+      isMovable ? "widget-movable" : "",
+      state.status === "moving" ? "widget-moving" : "",
+      state.status === "resizing" ? "widget-resizing" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    // --- Notify Context Effect ---
+    React.useEffect(() => {
+      if (state.interactionJustEnded) {
+        gridContext.setChanging(-1);
+        if (state.changeOccurred) {
+          gridContext.setChanged(id);
+          gridContext.setRect({
+            pos: state.gridPos,
+            size: state.gridSize,
+          });
+        }
+        dispatch({ type: "INTERACTION_END" });
+      } else {
+        if (state.status === "moving" && state.potentialGridPos) {
+          if (gridContext.changed !== id) {
+            gridContext.setChanged(id);
+          }
+          gridContext.setRect({
+            pos: state.potentialGridPos, 
+            size: state.gridSize,
+          });
+        } else if (state.status === "resizing" && state.potentialGridSize) {
+          if (gridContext.changed !== id) {
+            gridContext.setChanged(id);
+          }
+          gridContext.setRect({
+            pos: state.gridPos,
+            size: state.potentialGridSize,
+          });
+        } else if (state.status === "moving" || state.status === "resizing") {
+          console.log(`Widget ${id} notifying context: START ${state.status}`);
+          if (gridContext.changing !== id) {
+            gridContext.setChanging(id);
+          }
+          gridContext.setRect({ pos: state.gridPos, size: state.gridSize });
+        }
+      }
+    }, [
+      state.status,
+      state.gridPos,
+      state.gridSize,
+      state.potentialGridPos,
+      state.potentialGridSize,
+      state.interactionJustEnded,
+    ]);
+
+    // --- Style Application Effect ---
+    React.useLayoutEffect(() => {
+      if (!divref.current) return;
+
+      const style = divref.current.style;
+      if (state.status === "moving" || state.status === "resizing") {
+        style.position = "absolute";
+        style.top = `${state.interactionPixelPos?.y ?? 0}px`;
+        style.left = `${state.interactionPixelPos?.x ?? 0}px`;
+        style.width = `${state.interactionPixelSize?.x ?? 0}px`;
+        style.height = `${state.interactionPixelSize?.y ?? 0}px`;
+        style.gridArea = "";
+        style.zIndex = "1";
+      } else {
+        style.position = "relative";
+        style.top = "auto";
+        style.left = "auto";
+        style.width = "auto";
+        style.height = "auto";
+        style.gridArea = `${state.gridPos.y + 1} / ${
+          state.gridPos.x + 1
+        } / span ${state.gridSize.y} / span ${state.gridSize.x}`;
+        style.zIndex = "0";
+      }
+    }, [
+      state.status,
+      state.gridPos,
+      state.gridSize,
+      state.interactionPixelPos,
+      state.interactionPixelSize,
+    ]);
 
     return (
       <div
         ref={divref}
-        style={{
-          ...props.style,
-          position: "absolute",
-        }}
-        className={`
-          ${props.className ?? ""}
-          widget 
-          ${props.static ? "widget-static" : ""}
-          ${props.isResizable ? "widget-resizable" : ""}
-          ${props.isMovable ? "widget-movable" : ""}
-          ${pos.isMoving ? "widget-moving" : ""}
-          ${size.isResizing ? "widget-resizing" : ""}
-        `}
+        style={props.style} // Pass user styles, but position/size/grid is controlled by effect
+        className={classNames}
       >
         {children}
       </div>
     );
   }
 );
+
+Widget.displayName = "Widget";
+export default Widget;
