@@ -56,6 +56,7 @@ export type WidgetState = {
   dragStartOffset: Vec2 | null;
   potentialGridPos: Vec2 | null;
   potentialGridSize: Vec2 | null;
+  prevValue: Vec2 | null;
 
   interactionJustEnded: boolean;
   changeOccurred: boolean;

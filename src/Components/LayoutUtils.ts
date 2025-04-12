@@ -28,10 +28,9 @@ export function sortLayout(layout: Layout[]): Layout[] {
 export function resolveCollisionsAndCompact(
   currentLayout: Layout[],
   movingItem: Layout,
-  cols: number,
   preventCollision = false // If true, don't move others, just find valid spot
 ): Layout[] {
-  let layout = [...currentLayout];
+  let layout = structuredClone(currentLayout)
   const movingId = movingItem.id;
 
   // --- STAGE 1: Place Moving Item & Detect Initial Collisions ---
@@ -39,10 +38,8 @@ export function resolveCollisionsAndCompact(
   layout = layout.map(l => l.id === movingId ? movingItem : l);
 
   if (preventCollision) {
-      // Find the first non-colliding spot (simplified)
       while (getCollisions(layout, movingItem).length > 0) {
-          movingItem.y++; // Move down simply
-          // Add boundary checks
+          movingItem.y++; 
           layout = layout.map(l => l.id === movingId ? movingItem : l);
       }
       return layout;
@@ -50,27 +47,21 @@ export function resolveCollisionsAndCompact(
 
 
   // --- STAGE 2: Resolve Collisions by Pushing (Recursive/Iterative) ---
-  // This is the really complex part. Needs iteration or recursion.
-  // For each collision, push the colliding item down (or right).
-  // The pushed item might cause new collisions, so repeat.
-  // A common strategy is to push items vertically.
   let changed = true;
   while(changed) {
       changed = false;
-      const sorted = sortLayout(layout); // Process top-down
+      const sorted = sortLayout(layout);
       for (let i = 0; i < sorted.length; i++) {
           const item = sorted[i];
-          if (item.id === movingId || item.isStatic) continue; // Don't push the item being dragged or static items
+          if (item.id === movingId || item.isStatic) continue;
 
           const collisions = getCollisions(layout, item);
           if (collisions.length > 0) {
-              // Find the lowest point of the colliding items
               const lowestCollisionY = Math.max(...collisions.map(l => l.y + l.h));
               if(item.y < lowestCollisionY) {
                     const newY = lowestCollisionY;
-                    // Update item position in the main layout array
                     layout = layout.map(l => l.id === item.id ? { ...l, y: newY } : l);
-                    changed = true; // Layout modified, need to re-check
+                    changed = true;
               }
           }
       }
@@ -78,29 +69,27 @@ export function resolveCollisionsAndCompact(
 
 
   // --- STAGE 3: Compaction (Vertical) ---
-  // Move items up into empty space
   changed = true;
    while(changed) {
       changed = false;
       const sorted = sortLayout(layout);
       for (let i = 0; i < sorted.length; i++) {
           const item = sorted[i];
-          if (item.id === movingId || item.isStatic) continue; // Don't compact the item being dragged
+          if (item.id === movingId || item.isStatic) continue;
 
-          let newY = 0; // Try placing from the top
+          let newY = 0;
           while(true) {
               const potentialItem = { ...item, y: newY };
               const collisions = getCollisions(layout, potentialItem);
               if (collisions.length === 0) {
-                  // Found a free spot higher up or at the same position
                   if (newY < item.y) {
                       layout = layout.map(l => l.id === item.id ? potentialItem : l);
-                      changed = true; // Layout modified, need re-sort and re-check
+                      changed = true;
                   }
-                  break; // Stop checking lower positions for this item
+                  break;
               }
-              newY++; // Try next row down
-              if (newY >= item.y) break; // No improvement possible
+              newY++;
+              if (newY >= item.y) break;
           }
       }
    }

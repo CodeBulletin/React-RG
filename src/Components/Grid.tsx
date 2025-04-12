@@ -3,15 +3,15 @@ import React, {
   useRef,
   useLayoutEffect,
   useEffect,
-  useMemo, // Import useMemo
-  useCallback, // Import useCallback
-  useImperativeHandle, // Import useImperativeHandle
-  createContext, // Import createContext
-  useContext, // Import useContext
-  forwardRef, // Import forwardRef
-  Children, // Import Children
-  isValidElement, // Import isValidElement
-  cloneElement, // Import cloneElement
+  useMemo,
+  useCallback, 
+  useImperativeHandle, 
+  createContext,
+  useContext,
+  forwardRef,
+  Children,
+  isValidElement,
+  cloneElement,
 } from "react";
 import GridSlots from "./GridSlots";
 import Placeholder from "./Placeholder";
@@ -25,8 +25,7 @@ import {
   GridRef,
   GridState,
   Layout,
-} from "./types"; // Ensure all types are imported
-import { sortLayout } from "./LayoutUtils";
+} from "./types";
 
 const GridContext = createContext<GridContextType | null>(null);
 
@@ -59,67 +58,41 @@ export const Grid = forwardRef((props: GridProps, ref: React.Ref<GridRef>) => {
     pos: { x: 0, y: 0 },
     size: { x: 0, y: 0 },
   });
-  const [currentLayout, setCurrentLayout] = useState<Layout[]>([]);
 
-  // --- Imperative Handle ---
   useImperativeHandle(
     ref,
     () => ({
       getLayout: () => {
-        return currentLayout
+        return []
       },
     }),
     [widgetRefs]
   );
 
-  // --- Widget Refs Management ---
   useEffect(() => {
-    const initialLayout: Layout[] = [];
-    Children.forEach(props.children, (child) => {
-      if (isValidElement(child)) {
-        const childProps = child.props as WidgetProps;
-        if (childProps.id !== undefined) {
-          initialLayout.push({
-            id: childProps.id,
-            x: childProps.x,
-            y: childProps.y,
-            w: childProps.w,
-            h: childProps.h,
-            isStatic: childProps.static ?? false
-          });
-        }
-      }
-    });
-    // Sort initially to ensure consistent order for algorithms
-    setCurrentLayout(sortLayout(initialLayout));
-    
     widgetRefs.current.clear();
     Children.forEach(props.children, (child) => {
       if (isValidElement(child) && (child.props as WidgetProps).id !== undefined) {
-         // Ensure you create a new ref object for each child
          widgetRefs.current.set((child.props as WidgetProps).id, React.createRef());
       }
     });
   }, [props.children]);
 
-  // --- Layout Measurement Effect ---
   useLayoutEffect(() => {
     let rafId: number | null = null;
     const measure = () => {
-      rafId = null; // Reset rafId first
+      rafId = null;
       if (gridref.current) {
         const clientRect = gridref.current.getBoundingClientRect();
-        // Use default values directly in calculation
         const currentGap = props.gap ?? 10;
         const currentRowHeight = props.rowHeight ?? 100;
-        const newRows = Math.max(1, // Ensure at least 1 row
+        const newRows = Math.max(1,
           Math.floor(
             (clientRect.height + currentGap) / (currentRowHeight + currentGap)
           )
         );
 
         setState((prevState) => {
-          // Check against previous values before updating
           if (
             prevState.width !== clientRect.width ||
             prevState.rows !== newRows ||
@@ -127,23 +100,21 @@ export const Grid = forwardRef((props: GridProps, ref: React.Ref<GridRef>) => {
             prevState.left !== clientRect.left
           ) {
             return {
-              ...prevState, // Keep existing scroll state
+              ...prevState,
               width: clientRect.width,
               rows: newRows,
               top: clientRect.top,
               left: clientRect.left,
             };
           }
-          return prevState; // No change needed
+          return prevState;
         });
       }
     };
 
-    // Initial measure
-    measure(); // Call measure directly initially
+    measure(); 
 
     const resizeObserver = new ResizeObserver(() => {
-      // Throttle with rAF
       if (rafId === null) {
         rafId = requestAnimationFrame(measure);
       }
@@ -167,30 +138,25 @@ export const Grid = forwardRef((props: GridProps, ref: React.Ref<GridRef>) => {
       });
     }
 
-    // Cleanup
     return () => {
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
       }
       if (currentGridRef) {
         currentGridRef.removeEventListener("scroll", handleScroll);
-        // It's safer to unobserve before disconnecting
         resizeObserver.unobserve(currentGridRef);
       }
       resizeObserver.disconnect();
     };
-    // Dependencies include props that affect measurement/row calculation
-  }, [props.rowHeight, props.gap]); // Removed gridref, cols (cols don't affect height measurement)
+  }, [props.rowHeight, props.gap]);
 
-  // --- REMOVED Unnecessary/Incorrect Effect ---
-  // useEffect(() => {
-  //   setChanged(-1);
-  // }, [changed]);
+  useLayoutEffect(() => {
+    if (changed !== -1) {
+      
+      setChanged(_ => -1)
+    }
+  }, [changed]);
 
-
-  // --- Context Value Optimization ---
-
-  // Memoize setter functions passed to context
   const memoizedSetChanged = useCallback((value: number | string) => {
       setChanged(value);
   }, []);
@@ -203,15 +169,11 @@ export const Grid = forwardRef((props: GridProps, ref: React.Ref<GridRef>) => {
       setRect(newRect);
   }, []);
 
-
-  // Memoize the entire context value object
   const contextValue = useMemo<GridContextType>(() => {
     const { width, rows, top, left, scrollTop, scrollLeft } = state;
-    const numCols = props.cols ?? 12; // Use default value
-    const numGap = props.gap ?? 10; // Use default value
-    const currentGridWidth = width; // Use measured width
-
-    // Calculate colWidth, handle division by zero
+    const numCols = props.cols ?? 12;
+    const numGap = props.gap ?? 10; 
+    const currentGridWidth = width;
     const calcColWidth = numCols > 0
         ? (currentGridWidth - numGap * (numCols - 1)) / numCols
         : 0;
@@ -220,25 +182,25 @@ export const Grid = forwardRef((props: GridProps, ref: React.Ref<GridRef>) => {
       cols: numCols,
       colWidth: calcColWidth,
       rows: rows,
-      rowHeight: props.rowHeight ?? 100, // Use default value
+      rowHeight: props.rowHeight ?? 100, 
       gap: numGap,
-      width: currentGridWidth, // Measured width
+      width: currentGridWidth,
       top: top,
       left: left,
       scrollTop: scrollTop,
       scrollLeft: scrollLeft,
       changed: changed,
-      setChanged: memoizedSetChanged, // Pass stable function reference
+      setChanged: memoizedSetChanged, 
       changing: changing,
-      setChanging: memoizedSetChanging, // Pass stable function reference
+      setChanging: memoizedSetChanging,
       rect: rect,
-      setRect: memoizedSetRect, // Pass stable function reference
+      setRect: memoizedSetRect, 
     };
   }, [
-    state, // Depends on the entire state object
-    props.cols, props.gap, props.rowHeight, // Relevant props from props object
-    changed, changing, rect, // Other state values
-    memoizedSetChanged, memoizedSetChanging, memoizedSetRect // Include stable callbacks
+    state, 
+    props.cols, props.gap, props.rowHeight, 
+    changed, changing, rect, 
+    memoizedSetChanged, memoizedSetChanging, memoizedSetRect 
   ]);
 
   // --- Render ---
@@ -268,20 +230,16 @@ export const Grid = forwardRef((props: GridProps, ref: React.Ref<GridRef>) => {
           }}
           ref={gridref}
         >
-          {/* Map over children and clone to pass ref */}
           {contextValue && Children.map(props.children, (child) => {
             if (isValidElement(child) && (child.props as WidgetProps).id !== undefined) {
-              // Get the corresponding ref from the map
               const widgetRef = widgetRefs.current.get((child.props as WidgetProps).id);
               return cloneElement(child as React.ReactElement<any>, {
-                // Pass the specific ref object to the child
                 ref: widgetRef,
               });
             }
-            return child; // Return non-widget children as is
+            return child;
           })}
         </div>
-        {/* Conditional rendering of helpers */}
         {props.showSlots && <GridSlots />}
         {props.showPlaceholder && <Placeholder />}
       </GridContext.Provider>

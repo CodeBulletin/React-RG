@@ -7,6 +7,7 @@ export const Widget = forwardRef(
   (props: WidgetProps, ref: React.Ref<WidgetRef>) => {
     const {
       children,
+      id,
       x,
       y,
       w,
@@ -15,7 +16,6 @@ export const Widget = forwardRef(
       maxW,
       minH,
       maxH,
-      id,
       isMovable = true,
       isResizable = true,
       static: isStatic,
@@ -28,7 +28,11 @@ export const Widget = forwardRef(
     } | null>(null);
     const animationFrameRef = React.useRef<number | null>(null);
 
-    const [state, dispatch] = React.useReducer(widgetReducer, props, createInitialState);
+    const [state, dispatch] = React.useReducer(
+      widgetReducer,
+      props,
+      createInitialState
+    );
 
     // --- Event Handlers ---
     const handleMoveMouseDown = React.useCallback(
@@ -76,19 +80,22 @@ export const Widget = forwardRef(
         getPosition: () => state.gridPos,
         getSize: () => state.gridSize,
         setPosition: (newPos: Vec2) =>
-          dispatch({ type: "SET_POSITION", payload: newPos }),
-        getStatic: () => isStatic ?? false
+          dispatch({
+            type: "PROPS_UPDATE",
+            payload: { x: newPos.x, y: newPos.y, w, h, minW, maxW, minH, maxH },
+          }),
+        getStatic: () => isStatic ?? false,
       }),
       [state.gridPos, state.gridSize, dispatch, isStatic]
     );
 
     // --- Effect for Prop Updates ---
-    React.useEffect(() => {
-      dispatch({
-        type: "PROPS_UPDATE",
-        payload: { x, y, w, h, minW, maxW, minH, maxH },
-      });
-    }, [x, y, w, h, minW, maxW, minH, maxH, dispatch]);
+    // React.useEffect(() => {
+    //   dispatch({
+    //     type: "PROPS_UPDATE",
+    //     payload: { x, y, w, h, minW, maxW, minH, maxH },
+    //   });
+    // }, [x, y, w, h, minW, maxW, minH, maxH, dispatch]);
 
     // --- Global Listeners Effect ---
     React.useEffect(() => {
@@ -234,37 +241,33 @@ export const Widget = forwardRef(
     // --- Notify Context Effect ---
     React.useEffect(() => {
       if (state.interactionJustEnded) {
+        console.log(`Widget ${id} notifying context: STOP ${state.status}`);
         gridContext.setChanging(-1);
-        if (state.changeOccurred) {
-          gridContext.setChanged(id);
-          gridContext.setRect({
-            pos: state.gridPos,
-            size: state.gridSize,
-          });
-        }
         dispatch({ type: "INTERACTION_END" });
       } else {
         if (state.status === "moving" && state.potentialGridPos) {
-          if (gridContext.changed !== id) {
-            gridContext.setChanged(id);
-          }
+          let prev = state.prevValue ?? state.gridPos;
+          if (state.potentialGridPos.x == prev.x && state.potentialGridPos.y == prev.y)
+            return
+          console.log(`Widget ${id} notifying context: DOING ${state.status}`);
+          gridContext.setChanged(id);
           gridContext.setRect({
-            pos: state.potentialGridPos, 
+            pos: state.potentialGridPos,
             size: state.gridSize,
           });
         } else if (state.status === "resizing" && state.potentialGridSize) {
-          if (gridContext.changed !== id) {
-            gridContext.setChanged(id);
-          }
+          let prev = state.prevValue ?? state.gridSize;
+          if (state.potentialGridSize.x == prev.x && state.potentialGridSize.y == prev.y)
+            return
+          console.log(`Widget ${id} notifying context: DOING ${state.status}`);
+          gridContext.setChanged(id);
           gridContext.setRect({
             pos: state.gridPos,
             size: state.potentialGridSize,
           });
         } else if (state.status === "moving" || state.status === "resizing") {
           console.log(`Widget ${id} notifying context: START ${state.status}`);
-          if (gridContext.changing !== id) {
-            gridContext.setChanging(id);
-          }
+          gridContext.setChanging(id);
           gridContext.setRect({ pos: state.gridPos, size: state.gridSize });
         }
       }

@@ -25,6 +25,7 @@ export const createInitialState = (props: WidgetProps): WidgetState => ({
   dragStartOffset: null,
   potentialGridPos: null,
   potentialGridSize: null,
+  prevValue: null,
   interactionJustEnded: false, 
   changeOccurred: false, 
 });
@@ -128,6 +129,10 @@ export const widgetReducer = (
       return {
         ...state,
         interactionPixelPos: { x: newPixelX, y: newPixelY },
+        prevValue: {
+          x: state.potentialGridPos?.x ?? state.gridPos.x,
+          y: state.potentialGridPos?.y ?? state.gridPos.y,
+        },
         potentialGridPos: { x: newGridX, y: newGridY },
       };
     }
@@ -236,6 +241,10 @@ export const widgetReducer = (
       return {
         ...state,
         interactionPixelSize: { x: newPixelW, y: newPixelH },
+        prevValue: {
+          x: state.potentialGridSize?.x ?? state.gridSize.x,
+          y: state.potentialGridSize?.y ?? state.gridSize.y,
+        },
         potentialGridSize: { x: newGridW, y: newGridH },
       };
     }
