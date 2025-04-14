@@ -13,7 +13,6 @@ import React, {
   isValidElement,
   cloneElement,
 } from "react";
-import GridSlots from "./GridSlots";
 import Placeholder from "./Placeholder";
 import "./Grid.css";
 import {
@@ -139,20 +138,10 @@ export const Grid = forwardRef((props: GridProps, ref: React.Ref<GridRef>) => {
             (props.padding ?? 0) * 2 -
             (currentRows - 1) * currentGap) /
           currentRows;
-        const newRows = Math.max(
-          currentRows,
-          Math.floor(
-            (containerRect.height + currentGap - 2 * (props.padding ?? 0)) / (currentRowHeight + currentGap)
-          )
-        );
-
-
-        console.log(newRows);
 
         setState((prevState) => {
           if (
             prevState.width !== clientRect.width ||
-            prevState.rows !== newRows ||
             prevState.top !== clientRect.top ||
             prevState.left !== clientRect.left ||
             prevState.rowsHeight !== currentRowHeight
@@ -161,7 +150,6 @@ export const Grid = forwardRef((props: GridProps, ref: React.Ref<GridRef>) => {
               ...prevState,
               rowsHeight: currentRowHeight,
               width: clientRect.width,
-              rows: newRows,
               top: clientRect.top,
               left: clientRect.left,
             };
@@ -280,6 +268,7 @@ export const Grid = forwardRef((props: GridProps, ref: React.Ref<GridRef>) => {
       rect: rect,
       setRect: memoizedSetRect,
       setRender: memoizedRender,
+      conatinerRef: containeref
     };
   }, [
     state,
@@ -291,10 +280,6 @@ export const Grid = forwardRef((props: GridProps, ref: React.Ref<GridRef>) => {
     memoizedSetChanging,
     memoizedSetRect,
   ]);
-
-  const height = Math.max(
-    ...getCurrentLayout(widgetRefs).map((i) => i.y + i.h)
-  );
 
   return (
     <div
@@ -337,7 +322,6 @@ export const Grid = forwardRef((props: GridProps, ref: React.Ref<GridRef>) => {
                   return child;
                 })}
             </div>
-            {props.showSlots && <GridSlots />}
             {props.showPlaceholder && <Placeholder />}
           </>
         )}

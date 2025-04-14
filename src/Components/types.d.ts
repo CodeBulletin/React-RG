@@ -157,5 +157,6 @@ export type GridContextType = {
   setChanging: (val: number | string) => void;
   rect: Rect;
   setRect: (rect: Rect) => void;
-  setRender: (fn: RenderFunction) => void
+  setRender: (fn: RenderFunction) => void;
+  conatinerRef: React.RefObject<HTMLDivElement | null>
 };
