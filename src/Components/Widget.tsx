@@ -94,71 +94,64 @@ export const Widget = forwardRef(
     }, [props.layout]);
 
     // --- Global Listeners Effect ---
-    React.useEffect(() => {
-      // Only run when moving or resizing
+    React.useLayoutEffect(() => {
       if (state.status !== "moving" && state.status !== "resizing") return;
 
       const container = gridContext.conatinerRef.current;
-      if (!container) return; // Early exit if container ref is not available
+      if (!container) return;
 
-      // --- AutoScroll Configuration ---
-      const scrollThreshold = 50; // Pixels from edge to trigger scroll
-      const scrollStep = 15; // Pixels to scroll per frame (adjust for desired speed)
-      // ---
+      const scrollThreshold = 30;
 
       const performUpdate = () => {
         if (!latestMouseEventRef.current) {
-          animationFrameRef.current = null; // Ensure cleanup if mouse ref becomes null
+          animationFrameRef.current = null;
           return;
         }
 
         const { clientX, clientY } = latestMouseEventRef.current;
+        let currentScrollTop = container.scrollTop;
+        let needsScroll = false;
 
-        // --- Auto-scroll Logic (only when moving) ---
-        if (state.status === "moving" && container) {
+        if (
+          (state.status === "moving" || state.status === "resizing") &&
+          container
+        ) {
           const containerRect = container.getBoundingClientRect();
-          // Mouse Y position relative to the container's visible viewport
           const mouseYRelativeToContainer = clientY - containerRect.top;
 
-          let needsScroll = false;
-          if (mouseYRelativeToContainer < scrollThreshold) {
-            // Scroll Up
-            const newScrollTop = Math.max(0, container.scrollTop - scrollStep);
-            if (container.scrollTop !== newScrollTop) {
-              container.scrollTop = newScrollTop;
-              needsScroll = true;
-            }
-          } else if (
-            mouseYRelativeToContainer >
+          if (
+            mouseYRelativeToContainer +
+              state.gridSize.y * gridContext.rowHeight -
+              (state.gridSize.y - 1) * gridContext.gap >
             containerRect.height - scrollThreshold
           ) {
-            // Scroll Down
             const maxScrollTop =
               container.scrollHeight - container.clientHeight;
             const newScrollTop = Math.min(
               maxScrollTop,
-              container.scrollTop + scrollStep
+              container.scrollTop +
+                (mouseYRelativeToContainer +
+                  state.gridSize.y * gridContext.rowHeight -
+                  (state.gridSize.y - 1) * gridContext.gap) -
+                containerRect.height -
+                scrollThreshold
             );
             if (container.scrollTop !== newScrollTop) {
               container.scrollTop = newScrollTop;
+              currentScrollTop = newScrollTop;
               needsScroll = true;
             }
           }
-          // If scrolling happened, update gridContext's scrollTop state
-          // This is important if other parts of your app rely on the context's scrollTop value
-          // Note: This might cause extra re-renders if not handled carefully.
-          // Consider if this is strictly necessary for your grid calculations.
-          // if (needsScroll) {
-          //    gridContext.setScrollTop(container.scrollTop); // Assuming you have a setScrollTop method in context
-          // }
         }
-        // --- End Auto-scroll Logic ---
-
-        // Dispatch move or resize action
         if (state.status === "moving") {
           dispatch({
             type: "MOVE",
-            payload: { clientX, clientY, gridContext },
+            payload: {
+              clientX,
+              clientY,
+              gridContext,
+              currentScrollTop,
+            },
           });
         } else if (state.status === "resizing") {
           dispatch({
@@ -167,16 +160,15 @@ export const Widget = forwardRef(
               clientX,
               clientY,
               gridContext,
+              currentScrollTop,
             },
           });
         }
 
-        // Nullify ref to allow the next mousemove to request a new frame
         animationFrameRef.current = null;
       };
 
       const handleMouseMove = (e: MouseEvent) => {
-        // Prevent default text selection behavior during drag
         e.preventDefault();
 
         latestMouseEventRef.current = {
@@ -184,14 +176,13 @@ export const Widget = forwardRef(
           clientY: e.clientY,
         };
 
-        // Request animation frame *only* if one isn't already pending
         if (animationFrameRef.current === null) {
           animationFrameRef.current = requestAnimationFrame(performUpdate);
         }
       };
 
       const handleMouseUp = (e: MouseEvent) => {
-        if (e.button !== 0) return; // Only react to main button mouseup
+        if (e.button !== 0) return;
 
         if (animationFrameRef.current !== null) {
           cancelAnimationFrame(animationFrameRef.current);
@@ -203,14 +194,12 @@ export const Widget = forwardRef(
         } else if (state.status === "resizing") {
           dispatch({ type: "RESIZE_END" });
         }
-        latestMouseEventRef.current = null; // Clear mouse position ref
+        latestMouseEventRef.current = null;
       };
 
-      // Add listeners
-      window.addEventListener("mousemove", handleMouseMove, { passive: false }); // passive: false needed for preventDefault
+      window.addEventListener("mousemove", handleMouseMove, { passive: false });
       window.addEventListener("mouseup", handleMouseUp);
 
-      // Cleanup function
       return () => {
         window.removeEventListener("mousemove", handleMouseMove);
         window.removeEventListener("mouseup", handleMouseUp);
@@ -218,9 +207,9 @@ export const Widget = forwardRef(
           cancelAnimationFrame(animationFrameRef.current);
           animationFrameRef.current = null;
         }
-        latestMouseEventRef.current = null; // Clear mouse ref on cleanup
+        latestMouseEventRef.current = null;
       };
-    }, [state.status, gridContext, dispatch, id]); // Dependencies are crucial here
+    }, [state.status, gridContext, dispatch, id]);
 
     // --- Attach Handle Listeners ---
     React.useEffect(() => {

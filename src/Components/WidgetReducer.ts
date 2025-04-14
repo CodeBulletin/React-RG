@@ -95,7 +95,9 @@ export const widgetReducer = (
         !state.interactionPixelSize
       )
         return state;
-      const { clientX, clientY, gridContext } = action.payload;
+      const { clientX, clientY, gridContext, currentScrollTop } = action.payload;
+
+      const actualScrollTop = currentScrollTop ?? gridContext.scrollTop;
 
       let newPixelX =
         clientX -
@@ -106,7 +108,7 @@ export const widgetReducer = (
         clientY -
         gridContext.top -
         state.dragStartOffset.y +
-        gridContext.scrollTop;
+        actualScrollTop;
 
       newPixelX = Math.max(
         Math.min(newPixelX, gridContext.width - state.interactionPixelSize.x),
@@ -186,7 +188,11 @@ export const widgetReducer = (
         clientX,
         clientY,
         gridContext,
+        currentScrollTop
       } = action.payload;
+
+
+      const actualScrollTop = currentScrollTop ?? gridContext.scrollTop;
 
       let newPixelW =
         clientX +
@@ -197,7 +203,7 @@ export const widgetReducer = (
       let newPixelH =
         clientY +
         state.dragStartOffset.y -
-        (state.interactionPixelPos.y + gridContext.top - gridContext.scrollTop);
+        (state.interactionPixelPos.y + gridContext.top - actualScrollTop);
 
       const colWidth = gridContext.colWidth;
       const rowHeight = gridContext.rowHeight;

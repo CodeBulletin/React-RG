@@ -84,6 +84,7 @@ export type WidgetAction =
         clientX: number;
         clientY: number;
         gridContext: GridContextType;
+        currentScrollTop?: number;
       };
     }
   | {
@@ -104,6 +105,7 @@ export type WidgetAction =
         clientX: number;
         clientY: number;
         gridContext: GridContextType;
+        currentScrollTop?: number;
       };
     }
   | {
