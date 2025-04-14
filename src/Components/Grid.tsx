@@ -279,6 +279,7 @@ export const Grid = forwardRef((props: GridProps, ref: React.Ref<GridRef>) => {
     rect,
     memoizedSetChanging,
     memoizedSetRect,
+    containeref.current
   ]);
 
   return (
