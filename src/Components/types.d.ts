@@ -18,31 +18,29 @@ export type Layout = {
   isStatic: boolean;
 };
 
+export type ExtendedLayout = Layout & {
+  minW: number | null;
+  minH: number | null;
+  maxW: number | null;
+  maxH: number | null;
+  isDraggable: boolean | null;
+  isResizeable: boolean | null;
+};
+
 // -- Widget Types --
 export type WidgetProps = {
   children: React.ReactNode;
   id: number | string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-
-  static?: boolean;
-  isResizable?: boolean;
-  isMovable?: boolean;
-  minW?: number;
-  minH?: number;
-  maxW?: number;
-  maxH?: number;
-
   className?: string;
   style?: React.CSSProperties;
+  layout?: ExtendedLayout
 };
 
 export type WidgetRef = {
   getSize: () => Vec2;
   getPosition: () => Vec2;
   setPosition: (pos: Vec2) => void;
+  setState: (layout: ExtendedLayout) => void;
   getStatic: () => boolean;
 };
 
@@ -60,23 +58,17 @@ export type WidgetState = {
 
   interactionJustEnded: boolean;
   changeOccurred: boolean;
+
+  minSize: Vec2;
+  maxSize: Vec2;
+  isResizeable: boolean,
+  isDraggable: boolean,
+  isStatic: boolean
 };
 
 export type WidgetAction =
-  | {
-      type: "PROPS_UPDATE";
-      payload: {
-        x: number;
-        y: number;
-        w: number;
-        h: number;
-        minW?: number;
-        maxW?: number;
-        minH?: number;
-        maxH?: number;
-      };
-    }
   | { type: "SET_POSITION"; payload: Vec2 }
+  | { type: "SET_STATE"; payload: ExtendedLayout }
   | {
       type: "MOVE_START";
       payload: {
@@ -112,10 +104,6 @@ export type WidgetAction =
         clientX: number;
         clientY: number;
         gridContext: GridContextType;
-        minW?: number;
-        maxW?: number;
-        minH?: number;
-        maxH?: number;
       };
     }
   | {
@@ -129,6 +117,7 @@ export type WidgetAction =
 export type GridState = {
   width: number;
   rows: number;
+  rowsHeight: number;
   top: number;
   left: number;
   scrollTop: number;
@@ -142,11 +131,16 @@ export type GridRef = {
 export type GridProps = {
   children: React.ReactElement[];
   cols?: number;
-  rowHeight?: number;
+  rows?: number;
+  padding?: number;
   gap?: number;
   showSlots?: boolean;
   showPlaceholder?: boolean;
+  layout: ExtendedLayout[];
+  setLayout: (layout: ExtendedLayout[]) => void;
 };
+
+type RenderFunction = (prev: boolean) => boolean
 
 export type GridContextType = {
   cols: number;
@@ -159,10 +153,9 @@ export type GridContextType = {
   scrollTop: number;
   scrollLeft: number;
   width: number;
-  changed: number | string;
-  setChanged: (val : number | string) => void;
   changing: number | string;
-  setChanging: (val : number | string) => void;
+  setChanging: (val: number | string) => void;
   rect: Rect;
-  setRect: ( rect: Rect ) => void;
+  setRect: (rect: Rect) => void;
+  setRender: (fn: RenderFunction) => void
 };

@@ -1,24 +1,17 @@
-import {
-  Vec2,
-  WidgetAction,
-  WidgetProps,
-  WidgetState,
-} from "./types";
+import { Vec2, WidgetAction, WidgetState } from "./types";
 
-export const clampSize = (w: number, h: number, props: WidgetProps): Vec2 => {
-  const minW = props.minW ?? 1;
-  const maxW = props.maxW ?? Infinity;
-  const minH = props.minH ?? 1;
-  const maxH = props.maxH ?? Infinity;
+export const clampVec2 = (v: Vec2, min: Vec2, max: Vec2): Vec2 => {
   return {
-    x: Math.min(Math.max(w, minW), maxW),
-    y: Math.min(Math.max(h, minH), maxH),
+    x: Math.min(Math.max(v.x, min.x), max.x),
+    y: Math.min(Math.max(v.y, min.y), max.y),
   };
 };
 
-export const createInitialState = (props: WidgetProps): WidgetState => ({
-  gridPos: { x: props.x, y: props.y },
-  gridSize: clampSize(props.w, props.h, props),
+export const createInitialState = (): WidgetState => ({
+  gridPos: { x: 0, y: 0 },
+  gridSize: { x: 0, y: 0 },
+  minSize: { x: 0, y: 0 },
+  maxSize: { x: 0, y: 0 },
   status: "idle",
   interactionPixelPos: null,
   interactionPixelSize: null,
@@ -26,8 +19,11 @@ export const createInitialState = (props: WidgetProps): WidgetState => ({
   potentialGridPos: null,
   potentialGridSize: null,
   prevValue: null,
-  interactionJustEnded: false, 
-  changeOccurred: false, 
+  interactionJustEnded: false,
+  changeOccurred: false,
+  isDraggable: false,
+  isResizeable: false,
+  isStatic: false,
 });
 
 export const widgetReducer = (
@@ -35,28 +31,37 @@ export const widgetReducer = (
   action: WidgetAction
 ): WidgetState => {
   switch (action.type) {
-    case "PROPS_UPDATE": {      // Only update from props if not currently interacting
-      if (state.status !== "idle") return state;
-      const { x, y, w, h, ...sizeProps } = action.payload;
-      const clampedSize = clampSize(w, h, sizeProps as WidgetProps);
-      // Only update if props actually changed grid position/size
-      if (
-        state.gridPos.x === x &&
-        state.gridPos.y === y &&
-        state.gridSize.x === clampedSize.x &&
-        state.gridSize.y === clampedSize.y
-      ) {
-        return state;
-      }
+    case "SET_STATE": {
+      const { x, y, w, h, ...other } = action.payload;
+      let min = {
+        x: other.minW ?? 1,
+        y: other.minH ?? 1,
+      };
+      let max = {
+        x: other.maxW ?? Infinity,
+        y: other.maxH ?? Infinity,
+      };
+
       return {
         ...state,
         gridPos: { x, y },
-        gridSize: clampedSize,
+        gridSize: clampVec2(
+          {
+            x: w,
+            y: h,
+          },
+          min,
+          max
+        ),
+        maxSize: max,
+        minSize: min,
+        isDraggable: other.isDraggable ?? true,
+        isResizeable: other.isResizeable ?? true,
+        isStatic: other.isStatic
       };
     }
 
     case "SET_POSITION": {
-      if (state.status !== "idle") return state; // Prevent update during interaction
       return {
         ...state,
         gridPos: action.payload,
@@ -72,13 +77,12 @@ export const widgetReducer = (
           x: clientX - elementRect.left,
           y: clientY - elementRect.top,
         },
-        // Store initial pixel position/size for smooth absolute positioning
         interactionPixelPos: {
           x: elementRect.left - gridContext.left + gridContext.scrollLeft,
           y: elementRect.top - gridContext.top + gridContext.scrollTop,
         },
         interactionPixelSize: { x: elementRect.width, y: elementRect.height },
-        potentialGridPos: null, 
+        potentialGridPos: null,
         interactionJustEnded: false,
         changeOccurred: false,
       };
@@ -93,7 +97,6 @@ export const widgetReducer = (
         return state;
       const { clientX, clientY, gridContext } = action.payload;
 
-      // Calculate new pixel position relative to grid container
       let newPixelX =
         clientX -
         gridContext.left -
@@ -105,21 +108,18 @@ export const widgetReducer = (
         state.dragStartOffset.y +
         gridContext.scrollTop;
 
-      // Clamp pixel position within grid bounds
       newPixelX = Math.max(
         Math.min(newPixelX, gridContext.width - state.interactionPixelSize.x),
         0
       );
       newPixelY = Math.max(newPixelY, 0);
 
-      // Calculate potential new grid position (logical units)
       const colWidth = gridContext.colWidth;
       const rowHeight = gridContext.rowHeight;
       const gap = gridContext.gap;
       let newGridX = Math.round(newPixelX / (colWidth + gap));
       let newGridY = Math.round(newPixelY / (rowHeight + gap));
 
-      // Clamp grid position
       newGridX = Math.max(
         Math.min(newGridX, gridContext.cols - state.gridSize.x),
         0
@@ -139,14 +139,13 @@ export const widgetReducer = (
 
     case "MOVE_END": {
       if (state.status !== "moving") return state;
-      const finalPos = state.potentialGridPos ?? state.gridPos; // Use potential if calculated, else original
-      const didChange = finalPos.x !== state.gridPos.x || finalPos.y !== state.gridPos.y;
+      const finalPos = state.potentialGridPos ?? state.gridPos;
+      const didChange =
+        finalPos.x !== state.gridPos.x || finalPos.y !== state.gridPos.y;
 
       return {
         ...state,
         status: "idle",
-        gridPos: finalPos, // Finalize grid position
-        // Clear transient state
         interactionPixelPos: null,
         interactionPixelSize: null,
         dragStartOffset: null,
@@ -162,11 +161,9 @@ export const widgetReducer = (
         ...state,
         status: "resizing",
         dragStartOffset: {
-          // Offset from bottom-right corner
           x: elementRect.left + elementRect.width - clientX,
           y: elementRect.top + elementRect.height - clientY,
         },
-        // Store initial pixel position/size
         interactionPixelPos: {
           x: elementRect.left - gridContext.left + gridContext.scrollLeft,
           y: elementRect.top - gridContext.top + gridContext.scrollTop,
@@ -189,13 +186,8 @@ export const widgetReducer = (
         clientX,
         clientY,
         gridContext,
-        minW = 1,
-        maxW = Infinity,
-        minH = 1,
-        maxH = Infinity,
       } = action.payload;
 
-      // Calculate new pixel size based on mouse position and offset
       let newPixelW =
         clientX +
         state.dragStartOffset.x -
@@ -207,36 +199,32 @@ export const widgetReducer = (
         state.dragStartOffset.y -
         (state.interactionPixelPos.y + gridContext.top - gridContext.scrollTop);
 
-      // Clamp pixel size based on grid dimensions and min/max pixel constraints
       const colWidth = gridContext.colWidth;
       const rowHeight = gridContext.rowHeight;
       const gap = gridContext.gap;
-      const minPixelW = minW * colWidth + (minW - 1) * gap;
-      const maxPixelW = maxW * colWidth + (maxW - 1) * gap;
-      const minPixelH = minH * rowHeight + (minH - 1) * gap;
-      const maxPixelH = maxH * rowHeight + (maxH - 1) * gap;
+      const minPixelW = state.minSize.x * colWidth + (state.minSize.x - 1) * gap;
+      const maxPixelW = state.maxSize.x * colWidth + (state.maxSize.x - 1) * gap;
+      const minPixelH = state.minSize.y * rowHeight + (state.minSize.y - 1) * gap;
+      const maxPixelH = state.maxSize.y * rowHeight + (state.maxSize.y - 1) * gap;
 
       newPixelW = Math.max(minPixelW, newPixelW);
       newPixelH = Math.max(minPixelH, newPixelH);
-      if (maxW !== Infinity) newPixelW = Math.min(maxPixelW, newPixelW);
-      if (maxH !== Infinity) newPixelH = Math.min(maxPixelH, newPixelH);
+      if (state.maxSize.x !== Infinity) newPixelW = Math.min(maxPixelW, newPixelW);
+      if (state.maxSize.y !== Infinity) newPixelH = Math.min(maxPixelH, newPixelH);
 
-      // Prevent resizing beyond grid boundaries
       const gridEdgeX =
         (gridContext.cols - state.gridPos.x) * (colWidth + gap) - gap;
       newPixelW = Math.min(newPixelW, gridEdgeX);
 
-      // Calculate potential new grid size (logical units)
       let newGridW = Math.round((newPixelW + gap) / (colWidth + gap));
       let newGridH = Math.round((newPixelH + gap) / (rowHeight + gap));
 
-      // Clamp grid size based on logical min/max and grid columns
       newGridW = Math.min(
-        Math.max(newGridW, minW),
-        maxW,
+        Math.max(newGridW, state.minSize.x),
+        state.maxSize.x,
         gridContext.cols - state.gridPos.x
       );
-      newGridH = Math.min(Math.max(newGridH, minH), maxH);
+      newGridH = Math.min(Math.max(newGridH, state.minSize.y), state.maxSize.y);
 
       return {
         ...state,
@@ -251,8 +239,9 @@ export const widgetReducer = (
 
     case "RESIZE_END": {
       if (state.status !== "resizing") return state;
-      const finalSize = state.potentialGridSize ?? state.gridSize; // Use potential if calculated, else original
-      const didChange = finalSize.x !== state.gridSize.x || finalSize.y !== state.gridSize.y;
+      const finalSize = state.potentialGridSize ?? state.gridSize;
+      const didChange =
+        finalSize.x !== state.gridSize.x || finalSize.y !== state.gridSize.y;
 
       return {
         ...state,

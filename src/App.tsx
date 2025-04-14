@@ -3,12 +3,11 @@ import "./App.css";
 import { Exmaple } from "./Components/Example";
 import Grid from "./Components/Grid";
 import Widget from "./Components/Widget";
-import { GridRef } from "./Components/types";
+import { ExtendedLayout, GridRef } from "./Components/types";
 
 function App() {
-  const [slots, setSlots] = useState(false);
   const gridRef = useRef<GridRef | null>(null);
-  const [layout, setLayout] = useState([
+  const [layout, setLayout] = useState<ExtendedLayout[]>([
     {
       id: 1,
       w: 3,
@@ -19,9 +18,9 @@ function App() {
       minH: 1,
       maxH: 10,
       maxW: 10,
-      static: false,
-      isResizable: true,
-      isMovable: true,
+      isStatic: false,
+      isResizeable: true,
+      isDraggable: true,
     },
     {
       id: 2,
@@ -33,9 +32,9 @@ function App() {
       minH: 1,
       maxH: 10,
       maxW: 10,
-      static: false,
-      isResizable: true,
-      isMovable: true,
+      isStatic: false,
+      isResizeable: true,
+      isDraggable: true,
     },
     {
       id: 3,
@@ -47,9 +46,9 @@ function App() {
       minH: 1,
       maxH: 10,
       maxW: 10,
-      static: false,
-      isResizable: true,
-      isMovable: true,
+      isStatic: true,
+      isResizeable: true,
+      isDraggable: true,
     },
     {
       id: 4,
@@ -61,9 +60,23 @@ function App() {
       minH: 1,
       maxH: null,
       maxW: null,
-      static: false,
-      isResizable: true,
-      isMovable: true,
+      isStatic: false,
+      isResizeable: true,
+      isDraggable: true,
+    },
+    {
+      id: 5,
+      w: 2,
+      h: 2,
+      x: 8,
+      y: 2,
+      minW: 1,
+      minH: 1,
+      maxH: 10,
+      maxW: 10,
+      isStatic: true,
+      isResizeable: true,
+      isDraggable: true,
     },
   ]);
   const changeLayout = () => {
@@ -78,9 +91,9 @@ function App() {
         minH: 1,
         maxH: 10,
         maxW: 10,
-        static: false,
-        isResizable: true,
-        isMovable: true,
+        isStatic: false,
+        isResizeable: true,
+        isDraggable: true,
       },
       {
         id: 1,
@@ -92,9 +105,9 @@ function App() {
         minH: 1,
         maxH: 10,
         maxW: 10,
-        static: false,
-        isResizable: true,
-        isMovable: true,
+        isStatic: false,
+        isResizeable: true,
+        isDraggable: true,
       },
       {
         id: 4,
@@ -106,9 +119,9 @@ function App() {
         minH: 1,
         maxH: 10,
         maxW: 10,
-        static: false,
-        isResizable: true,
-        isMovable: true,
+        isStatic: false,
+        isResizeable: true,
+        isDraggable: true,
       },
       {
         id: 3,
@@ -120,38 +133,44 @@ function App() {
         minH: 1,
         maxH: 10,
         maxW: 10,
-        static: false,
-        isResizable: true,
-        isMovable: true,
+        isStatic: false,
+        isResizeable: true,
+        isDraggable: true,
       },
     ]);
   };
 
   return (
-    <div>
+    <div style={{
+      flexGrow: 1,
+      display: "flex",
+      flexDirection: 'column',
+      paddingLeft: '100px',
+      paddingRight: '100px',
+      paddingBottom: '100px',
+      gap: '100px'
+    }}>
       <div>
-        <button onClick={() => setSlots((s) => !s)}>Toggle Grid</button>
         <button onClick={() => console.log(gridRef.current?.getLayout())}>
           Print Layout
         </button>
         <button onClick={() => changeLayout()}>Change layout</button>
       </div>
-      <Grid cols={12} rowHeight={75} gap={20} showSlots={slots} ref={gridRef} showPlaceholder>
+      <Grid 
+        cols={12} 
+        rows={12}
+        gap={20} 
+        padding={10}
+        ref={gridRef} 
+        layout={layout}
+        setLayout={setLayout}
+        showSlots
+        showPlaceholder
+      >
         {layout.map((l) => (
           <Widget
             key={l.id}
             id={l.id}
-            x={l.x}
-            y={l.y}
-            w={l.w}
-            h={l.h}
-            static={true}
-            isResizable={l.isResizable}
-            isMovable={l.isMovable}
-            minW={l.minW}
-            minH={l.minH}
-            maxH={l.maxH ?? undefined}
-            maxW={l.maxW ?? undefined}
           >
             <Exmaple id={l.id} />
           </Widget>

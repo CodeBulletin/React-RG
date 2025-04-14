@@ -1,25 +1,11 @@
-import React, { forwardRef } from "react";
+import React, { forwardRef, useMemo } from "react";
 import { useGridContext } from "./Grid";
-import { Vec2, WidgetProps, WidgetRef } from "./types";
+import { ExtendedLayout, Vec2, WidgetProps, WidgetRef } from "./types";
 import { createInitialState, widgetReducer } from "./WidgetReducer";
 
 export const Widget = forwardRef(
   (props: WidgetProps, ref: React.Ref<WidgetRef>) => {
-    const {
-      children,
-      id,
-      x,
-      y,
-      w,
-      h,
-      minW,
-      maxW,
-      minH,
-      maxH,
-      isMovable = true,
-      isResizable = true,
-      static: isStatic,
-    } = props;
+    const { children, id, className, style } = props;
     const gridContext = useGridContext();
     const divref = React.useRef<HTMLDivElement>(null);
     const latestMouseEventRef = React.useRef<{
@@ -30,14 +16,13 @@ export const Widget = forwardRef(
 
     const [state, dispatch] = React.useReducer(
       widgetReducer,
-      props,
-      createInitialState
+      createInitialState()
     );
 
     // --- Event Handlers ---
     const handleMoveMouseDown = React.useCallback(
       (e: MouseEvent) => {
-        if (!isMovable || !divref.current) return;
+        if (!state.isDraggable || !divref.current) return;
         e.preventDefault();
         e.stopPropagation();
         const elementRect = divref.current.getBoundingClientRect();
@@ -51,12 +36,12 @@ export const Widget = forwardRef(
           },
         });
       },
-      [isMovable, gridContext, dispatch]
+      [state.isDraggable, gridContext, dispatch]
     );
 
     const handleResizeMouseDown = React.useCallback(
       (e: MouseEvent) => {
-        if (!isResizable || !divref.current) return;
+        if (!state.isResizeable || !divref.current) return;
         e.preventDefault();
         e.stopPropagation();
         const elementRect = divref.current.getBoundingClientRect();
@@ -70,40 +55,49 @@ export const Widget = forwardRef(
           },
         });
       },
-      [isResizable, gridContext, dispatch]
+      [state.isResizeable, gridContext, dispatch]
     );
 
     // --- Imperative Handle ---
-    React.useImperativeHandle(
+    React.useImperativeHandle<WidgetRef, WidgetRef>(
       ref,
       () => ({
         getPosition: () => state.gridPos,
         getSize: () => state.gridSize,
         setPosition: (newPos: Vec2) =>
           dispatch({
-            type: "PROPS_UPDATE",
-            payload: { x: newPos.x, y: newPos.y, w, h, minW, maxW, minH, maxH },
+            type: "SET_POSITION",
+            payload: { x: newPos.x, y: newPos.y },
           }),
-        getStatic: () => isStatic ?? false,
+        setState: (layout: ExtendedLayout) =>
+          dispatch({
+            type: "SET_STATE",
+            payload: layout,
+          }),
+        getStatic: () => state.isStatic,
       }),
-      [state.gridPos, state.gridSize, dispatch, isStatic]
+      [
+        state.gridPos,
+        state.gridSize,
+        dispatch,
+        state.isStatic,
+        gridContext.rect
+      ]
     );
 
-    // --- Effect for Prop Updates ---
-    // React.useEffect(() => {
-    //   dispatch({
-    //     type: "PROPS_UPDATE",
-    //     payload: { x, y, w, h, minW, maxW, minH, maxH },
-    //   });
-    // }, [x, y, w, h, minW, maxW, minH, maxH, dispatch]);
+    React.useEffect(() => {
+      if (props.layout)
+        dispatch({
+          type: "SET_STATE",
+          payload: props.layout,
+        });
+    }, [props.layout]);
 
     // --- Global Listeners Effect ---
     React.useEffect(() => {
       if (state.status === "idle") return;
-
-      // Function to be called within rAF
       const performUpdate = () => {
-        if (!latestMouseEventRef.current) return; // Should not happen if scheduled
+        if (!latestMouseEventRef.current) return;
 
         const { clientX, clientY } = latestMouseEventRef.current;
 
@@ -119,68 +113,51 @@ export const Widget = forwardRef(
               clientX,
               clientY,
               gridContext,
-              minW,
-              maxW,
-              minH,
-              maxH,
             },
           });
         }
 
-        // Reset the ref after processing the frame to allow scheduling the next one
         animationFrameRef.current = null;
       };
 
       const handleMouseMove = (e: MouseEvent) => {
-        // Store the latest mouse event data
         latestMouseEventRef.current = {
           clientX: e.clientX,
           clientY: e.clientY,
         };
 
-        // If no frame is scheduled, schedule one
         if (animationFrameRef.current === null) {
           animationFrameRef.current = requestAnimationFrame(performUpdate);
         }
-        // If a frame is already scheduled, it will simply use the latest data
-        // stored in latestMouseEventRef when it runs.
       };
 
       const handleMouseUp = (_: MouseEvent) => {
-        // IMPORTANT: Cancel any pending animation frame
-        // to prevent updates after mouse up.
         if (animationFrameRef.current !== null) {
           cancelAnimationFrame(animationFrameRef.current);
           animationFrameRef.current = null;
         }
 
-        // Dispatch the final END action
         if (state.status === "moving") {
           dispatch({ type: "MOVE_END" });
         } else if (state.status === "resizing") {
           dispatch({ type: "RESIZE_END" });
         }
-        latestMouseEventRef.current = null; // Clear mouse data
+        latestMouseEventRef.current = null;
       };
 
       window.addEventListener("mousemove", handleMouseMove);
       window.addEventListener("mouseup", handleMouseUp);
 
-      // Cleanup function
       return () => {
         window.removeEventListener("mousemove", handleMouseMove);
         window.removeEventListener("mouseup", handleMouseUp);
-
-        // Cancel any pending frame when the effect cleans up
-        // (e.g., component unmounts or status changes back to idle)
         if (animationFrameRef.current !== null) {
           cancelAnimationFrame(animationFrameRef.current);
           animationFrameRef.current = null;
         }
-        latestMouseEventRef.current = null; // Clear mouse data
+        latestMouseEventRef.current = null;
       };
-      // Ensure dependencies cover everything used in handlers & performUpdate
-    }, [state.status, gridContext, dispatch, id, minW, maxW, minH, maxH]); // Keep existing dependencies
+    }, [state.status, gridContext, dispatch, id]);
 
     // --- Attach Handle Listeners ---
     React.useEffect(() => {
@@ -191,13 +168,13 @@ export const Widget = forwardRef(
         ".widget-resizable-handle"
       );
 
-      if (draggable && isMovable) {
+      if (draggable && state.isDraggable) {
         draggable.addEventListener(
           "mousedown",
           handleMoveMouseDown as EventListener
         );
       }
-      if (resizable && isResizable) {
+      if (resizable && state.isResizeable) {
         resizable.addEventListener(
           "mousedown",
           handleResizeMouseDown as EventListener
@@ -205,13 +182,13 @@ export const Widget = forwardRef(
       }
 
       return () => {
-        if (draggable && isMovable) {
+        if (draggable && state.isDraggable) {
           draggable.removeEventListener(
             "mousedown",
             handleMoveMouseDown as EventListener
           );
         }
-        if (resizable && isResizable) {
+        if (resizable && state.isResizeable) {
           resizable.removeEventListener(
             "mousedown",
             handleResizeMouseDown as EventListener
@@ -222,59 +199,63 @@ export const Widget = forwardRef(
       children,
       handleMoveMouseDown,
       handleResizeMouseDown,
-      isMovable,
-      isResizable,
+      state.isDraggable,
+      state.isResizeable,
     ]);
 
-    const classNames = [
-      props.className ?? "",
-      "widget",
-      isStatic ? "widget-static" : "",
-      isResizable ? "widget-resizable" : "",
-      isMovable ? "widget-movable" : "",
-      state.status === "moving" ? "widget-moving" : "",
-      state.status === "resizing" ? "widget-resizing" : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
+    const classNames = useMemo(
+      () =>
+        [
+          className ?? "",
+          "widget",
+          state.isStatic ? "widget-static" : "",
+          state.isResizeable ? "widget-resizable" : "",
+          state.isDraggable ? "widget-draggable" : "",
+          state.status === "moving" ? "widget-moving" : "",
+          state.status === "resizing" ? "widget-resizing" : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      [state.isStatic, state.isResizeable, state.isDraggable, state.status]
+    );
 
     // --- Notify Context Effect ---
     React.useEffect(() => {
       if (state.interactionJustEnded) {
-        console.log(`Widget ${id} notifying context: STOP ${state.status}`);
         gridContext.setChanging(-1);
         dispatch({ type: "INTERACTION_END" });
       } else {
         if (state.status === "moving" && state.potentialGridPos) {
           let prev = state.prevValue ?? state.gridPos;
-          if (state.potentialGridPos.x == prev.x && state.potentialGridPos.y == prev.y)
-            return
-          console.log(`Widget ${id} notifying context: DOING ${state.status}`);
-          gridContext.setChanged(id);
+          if (
+            state.potentialGridPos.x == prev.x &&
+            state.potentialGridPos.y == prev.y
+          )
+            return;
+          gridContext.setRender((prev) => !prev);
           gridContext.setRect({
             pos: state.potentialGridPos,
             size: state.gridSize,
           });
         } else if (state.status === "resizing" && state.potentialGridSize) {
           let prev = state.prevValue ?? state.gridSize;
-          if (state.potentialGridSize.x == prev.x && state.potentialGridSize.y == prev.y)
-            return
-          console.log(`Widget ${id} notifying context: DOING ${state.status}`);
-          gridContext.setChanged(id);
+          if (
+            state.potentialGridSize.x == prev.x &&
+            state.potentialGridSize.y == prev.y
+          )
+            return;
+          gridContext.setRender((prev) => !prev);
           gridContext.setRect({
             pos: state.gridPos,
             size: state.potentialGridSize,
           });
         } else if (state.status === "moving" || state.status === "resizing") {
-          console.log(`Widget ${id} notifying context: START ${state.status}`);
           gridContext.setChanging(id);
           gridContext.setRect({ pos: state.gridPos, size: state.gridSize });
         }
       }
     }, [
       state.status,
-      state.gridPos,
-      state.gridSize,
       state.potentialGridPos,
       state.potentialGridSize,
       state.interactionJustEnded,
@@ -292,16 +273,15 @@ export const Widget = forwardRef(
         style.width = `${state.interactionPixelSize?.x ?? 0}px`;
         style.height = `${state.interactionPixelSize?.y ?? 0}px`;
         style.gridArea = "";
+        style.transition = "";
         style.zIndex = "1";
       } else {
-        style.position = "relative";
-        style.top = "auto";
-        style.left = "auto";
-        style.width = "auto";
-        style.height = "auto";
-        style.gridArea = `${state.gridPos.y + 1} / ${
-          state.gridPos.x + 1
-        } / span ${state.gridSize.y} / span ${state.gridSize.x}`;
+        style.position = "absolute";
+        style.top = `${state.gridPos.y * (gridContext.rowHeight + gridContext.gap)}px`;
+        style.left = `${state.gridPos.x * (gridContext.colWidth + gridContext.gap)}px`;;
+        style.height = `${state.gridSize.y * gridContext.rowHeight + (state.gridSize.y - 1) * gridContext.gap}px`;
+        style.width = `${state.gridSize.x * gridContext.colWidth + (state.gridSize.x - 1) * gridContext.gap}px`;
+        style.transition = "all 200ms ease";
         style.zIndex = "0";
       }
     }, [
@@ -315,7 +295,7 @@ export const Widget = forwardRef(
     return (
       <div
         ref={divref}
-        style={props.style} // Pass user styles, but position/size/grid is controlled by effect
+        style={style}
         className={classNames}
       >
         {children}

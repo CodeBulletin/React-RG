@@ -1,9 +1,6 @@
 import React from "react";
-// import { useWidgetContext } from "./Widget";
 
-export const Exmaple = React.memo(({ id }: { id: number }) => {
-  // const widgetContext = useWidgetContext();
-
+export const Exmaple = React.memo(({ id }: { id: number | string }) => {
   console.log("rerendering", id);
 
   return (
@@ -75,3 +72,5 @@ export const Exmaple = React.memo(({ id }: { id: number }) => {
     </div>
   );
 });
+
+Exmaple.displayName = 'Example'
