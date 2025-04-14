@@ -81,7 +81,7 @@ export const Widget = forwardRef(
         state.gridSize,
         dispatch,
         state.isStatic,
-        gridContext.rect
+        gridContext.rect,
       ]
     );
 
@@ -95,12 +95,66 @@ export const Widget = forwardRef(
 
     // --- Global Listeners Effect ---
     React.useEffect(() => {
-      if (state.status === "idle") return;
+      // Only run when moving or resizing
+      if (state.status !== "moving" && state.status !== "resizing") return;
+
+      const container = gridContext.conatinerRef.current;
+      if (!container) return; // Early exit if container ref is not available
+
+      // --- AutoScroll Configuration ---
+      const scrollThreshold = 50; // Pixels from edge to trigger scroll
+      const scrollStep = 15; // Pixels to scroll per frame (adjust for desired speed)
+      // ---
+
       const performUpdate = () => {
-        if (!latestMouseEventRef.current) return;
+        if (!latestMouseEventRef.current) {
+          animationFrameRef.current = null; // Ensure cleanup if mouse ref becomes null
+          return;
+        }
 
         const { clientX, clientY } = latestMouseEventRef.current;
 
+        // --- Auto-scroll Logic (only when moving) ---
+        if (state.status === "moving" && container) {
+          const containerRect = container.getBoundingClientRect();
+          // Mouse Y position relative to the container's visible viewport
+          const mouseYRelativeToContainer = clientY - containerRect.top;
+
+          let needsScroll = false;
+          if (mouseYRelativeToContainer < scrollThreshold) {
+            // Scroll Up
+            const newScrollTop = Math.max(0, container.scrollTop - scrollStep);
+            if (container.scrollTop !== newScrollTop) {
+              container.scrollTop = newScrollTop;
+              needsScroll = true;
+            }
+          } else if (
+            mouseYRelativeToContainer >
+            containerRect.height - scrollThreshold
+          ) {
+            // Scroll Down
+            const maxScrollTop =
+              container.scrollHeight - container.clientHeight;
+            const newScrollTop = Math.min(
+              maxScrollTop,
+              container.scrollTop + scrollStep
+            );
+            if (container.scrollTop !== newScrollTop) {
+              container.scrollTop = newScrollTop;
+              needsScroll = true;
+            }
+          }
+          // If scrolling happened, update gridContext's scrollTop state
+          // This is important if other parts of your app rely on the context's scrollTop value
+          // Note: This might cause extra re-renders if not handled carefully.
+          // Consider if this is strictly necessary for your grid calculations.
+          // if (needsScroll) {
+          //    gridContext.setScrollTop(container.scrollTop); // Assuming you have a setScrollTop method in context
+          // }
+        }
+        // --- End Auto-scroll Logic ---
+
+        // Dispatch move or resize action
         if (state.status === "moving") {
           dispatch({
             type: "MOVE",
@@ -117,21 +171,28 @@ export const Widget = forwardRef(
           });
         }
 
+        // Nullify ref to allow the next mousemove to request a new frame
         animationFrameRef.current = null;
       };
 
       const handleMouseMove = (e: MouseEvent) => {
+        // Prevent default text selection behavior during drag
+        e.preventDefault();
+
         latestMouseEventRef.current = {
           clientX: e.clientX,
           clientY: e.clientY,
         };
 
+        // Request animation frame *only* if one isn't already pending
         if (animationFrameRef.current === null) {
           animationFrameRef.current = requestAnimationFrame(performUpdate);
         }
       };
 
-      const handleMouseUp = (_: MouseEvent) => {
+      const handleMouseUp = (e: MouseEvent) => {
+        if (e.button !== 0) return; // Only react to main button mouseup
+
         if (animationFrameRef.current !== null) {
           cancelAnimationFrame(animationFrameRef.current);
           animationFrameRef.current = null;
@@ -142,12 +203,14 @@ export const Widget = forwardRef(
         } else if (state.status === "resizing") {
           dispatch({ type: "RESIZE_END" });
         }
-        latestMouseEventRef.current = null;
+        latestMouseEventRef.current = null; // Clear mouse position ref
       };
 
-      window.addEventListener("mousemove", handleMouseMove);
+      // Add listeners
+      window.addEventListener("mousemove", handleMouseMove, { passive: false }); // passive: false needed for preventDefault
       window.addEventListener("mouseup", handleMouseUp);
 
+      // Cleanup function
       return () => {
         window.removeEventListener("mousemove", handleMouseMove);
         window.removeEventListener("mouseup", handleMouseUp);
@@ -155,9 +218,9 @@ export const Widget = forwardRef(
           cancelAnimationFrame(animationFrameRef.current);
           animationFrameRef.current = null;
         }
-        latestMouseEventRef.current = null;
+        latestMouseEventRef.current = null; // Clear mouse ref on cleanup
       };
-    }, [state.status, gridContext, dispatch, id]);
+    }, [state.status, gridContext, dispatch, id]); // Dependencies are crucial here
 
     // --- Attach Handle Listeners ---
     React.useEffect(() => {
@@ -277,10 +340,20 @@ export const Widget = forwardRef(
         style.zIndex = "1";
       } else {
         style.position = "absolute";
-        style.top = `${state.gridPos.y * (gridContext.rowHeight + gridContext.gap)}px`;
-        style.left = `${state.gridPos.x * (gridContext.colWidth + gridContext.gap)}px`;;
-        style.height = `${state.gridSize.y * gridContext.rowHeight + (state.gridSize.y - 1) * gridContext.gap}px`;
-        style.width = `${state.gridSize.x * gridContext.colWidth + (state.gridSize.x - 1) * gridContext.gap}px`;
+        style.top = `${
+          state.gridPos.y * (gridContext.rowHeight + gridContext.gap)
+        }px`;
+        style.left = `${
+          state.gridPos.x * (gridContext.colWidth + gridContext.gap)
+        }px`;
+        style.height = `${
+          state.gridSize.y * gridContext.rowHeight +
+          (state.gridSize.y - 1) * gridContext.gap
+        }px`;
+        style.width = `${
+          state.gridSize.x * gridContext.colWidth +
+          (state.gridSize.x - 1) * gridContext.gap
+        }px`;
         style.transition = "all 200ms ease";
         style.zIndex = "0";
       }
@@ -291,15 +364,11 @@ export const Widget = forwardRef(
       state.interactionPixelPos,
       state.interactionPixelSize,
       gridContext.colWidth,
-      gridContext.rowHeight
+      gridContext.rowHeight,
     ]);
 
     return (
-      <div
-        ref={divref}
-        style={style}
-        className={classNames}
-      >
+      <div ref={divref} style={style} className={classNames}>
         {children}
       </div>
     );
