@@ -290,6 +290,8 @@ export const Widget = forwardRef(
       state.gridSize,
       state.interactionPixelPos,
       state.interactionPixelSize,
+      gridContext.colWidth,
+      gridContext.rowHeight
     ]);
 
     return (

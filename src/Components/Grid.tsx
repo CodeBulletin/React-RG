@@ -129,7 +129,6 @@ export const Grid = forwardRef((props: GridProps, ref: React.Ref<GridRef>) => {
     let rafId: number | null = null;
     const measure = () => {
       rafId = null;
-      console.log("hello");
       if (gridref.current && containeref.current) {
         const clientRect = gridref.current.getBoundingClientRect();
         const containerRect = containeref.current.getBoundingClientRect();
@@ -143,9 +142,12 @@ export const Grid = forwardRef((props: GridProps, ref: React.Ref<GridRef>) => {
         const newRows = Math.max(
           currentRows,
           Math.floor(
-            (clientRect.height + currentGap) / (currentRowHeight + currentGap)
+            (containerRect.height + currentGap - 2 * (props.padding ?? 0)) / (currentRowHeight + currentGap)
           )
         );
+
+
+        console.log(newRows);
 
         setState((prevState) => {
           if (
